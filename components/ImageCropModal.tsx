@@ -17,6 +17,10 @@ type ImageCropModalProps = {
   onCropComplete: (croppedDataUrl: string) => void;
   /** モーダルキャンセル時のコールバック */
   onCancel: () => void;
+  /** タブ切り替えコールバック（省略時はスタンドアロンモード、タブ非表示） */
+  onSwitchMode?: (mode: "crop" | "annotate") => void;
+  /** 現在のモード（タブのアクティブ表示用） */
+  currentMode?: "crop" | "annotate";
 };
 
 /**
@@ -74,6 +78,8 @@ export default function ImageCropModal({
   imageSrc,
   onCropComplete,
   onCancel,
+  onSwitchMode,
+  currentMode,
 }: ImageCropModalProps) {
   // ================================================================
   // Refs
@@ -672,14 +678,43 @@ export default function ImageCropModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/90">
-      {/* ヘッダー: タイトルとアクションボタン */}
+      {/* ヘッダー: タブ切り替え（または単体タイトル） + アクションボタン */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/50">
-        <h3 className="text-white text-sm font-medium">
-          画像を切り抜き
-          <span className="text-gray-400 text-xs ml-2">
-            ドラッグで範囲を選択
-          </span>
-        </h3>
+        {/* onSwitchMode が渡されている場合はタブ UI を表示、なければ単体タイトル */}
+        {onSwitchMode ? (
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1">
+              <button
+                className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                  currentMode === "annotate"
+                    ? "bg-white/20 text-white font-medium"
+                    : "text-gray-400 hover:text-white hover:bg-white/10"
+                }`}
+                onClick={() => onSwitchMode("annotate")}
+              >
+                マーカー
+              </button>
+              <button
+                className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                  currentMode === "crop"
+                    ? "bg-white/20 text-white font-medium"
+                    : "text-gray-400 hover:text-white hover:bg-white/10"
+                }`}
+                onClick={() => onSwitchMode("crop")}
+              >
+                切り抜き
+              </button>
+            </div>
+            <span className="text-gray-400 text-xs">ドラッグで範囲を選択</span>
+          </div>
+        ) : (
+          <h3 className="text-white text-sm font-medium">
+            画像を切り抜き
+            <span className="text-gray-400 text-xs ml-2">
+              ドラッグで範囲を選択
+            </span>
+          </h3>
+        )}
         <div className="flex gap-2">
           <button
             className="px-4 py-1.5 text-sm text-gray-300 hover:text-white

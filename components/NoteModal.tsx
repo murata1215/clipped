@@ -76,8 +76,6 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
   const [editMode, setEditMode] = useState<ImageEditMode>(null);
   /** 編集対象の画像 ID */
   const [editingImageId, setEditingImageId] = useState<string | null>(null);
-  /** 画像アクションメニューの表示対象 ID */
-  const [menuImageId, setMenuImageId] = useState<string | null>(null);
   /** 保存エラーメッセージ（容量超過時に表示） */
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -218,7 +216,6 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
    */
   const handleRemoveImage = (imageId: string) => {
     setImages((prev) => prev.filter((img) => img.id !== imageId));
-    setMenuImageId(null);
   };
 
   /**
@@ -229,7 +226,6 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
   const handleStartImageEdit = (imageId: string, mode: "crop" | "annotate") => {
     setEditingImageId(imageId);
     setEditMode(mode);
-    setMenuImageId(null);
   };
 
   /**
@@ -282,6 +278,15 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
     setEditingImageId(null);
   }, []);
 
+  /**
+   * 画像編集モード切り替えハンドラ
+   * タブ UI からの呼び出しで、マーカー ⇔ 切り抜きを切り替える。
+   * editingImageId は維持したまま editMode のみ変更する。
+   */
+  const handleSwitchEditMode = useCallback((mode: "crop" | "annotate") => {
+    setEditMode(mode);
+  }, []);
+
   /** モーダルの背景色クラス */
   const bgColor = colorBgMap[color] || colorBgMap.default;
 
@@ -318,7 +323,7 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
             </div>
           )}
 
-          {/* 画像サムネイル一覧（クリックで編集メニュー表示） */}
+          {/* 画像サムネイル一覧（クリックで直接マーカー編集を開く） */}
           {images.length > 0 && (
             <div className="flex flex-wrap gap-2 p-4 pb-0">
               {images.map((img) => (
@@ -329,9 +334,7 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
                     alt="添付画像"
                     className="w-24 h-24 object-cover rounded-lg cursor-pointer
                                hover:ring-2 hover:ring-blue-400 transition-all"
-                    onClick={() =>
-                      setMenuImageId(menuImageId === img.id ? null : img.id)
-                    }
+                    onClick={() => handleStartImageEdit(img.id, "annotate")}
                   />
 
                   {/* 画像削除ボタン（右上の×） */}
@@ -345,39 +348,6 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
-
-                  {/* 画像アクションメニュー（サムネイルクリックで表示） */}
-                  {menuImageId === img.id && (
-                    <div
-                      className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg
-                                 border border-gray-200 py-1 z-10 min-w-[120px]"
-                    >
-                      {/* 切り抜きボタン */}
-                      <button
-                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700
-                                   hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => handleStartImageEdit(img.id, "crop")}
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M7 3v4m0 0H3m4 0h10a2 2 0 012 2v10m0 0v4m0-4h4m-4 0H7" />
-                        </svg>
-                        切り抜き
-                      </button>
-                      {/* マーカーボタン */}
-                      <button
-                        className="w-full text-left px-3 py-1.5 text-xs text-gray-700
-                                   hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => handleStartImageEdit(img.id, "annotate")}
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                        マーカー
-                      </button>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -428,21 +398,25 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
         </div>
       </div>
 
-      {/* 画像切り抜きモーダル（z-60 で NoteModal の上に表示） */}
+      {/* 画像切り抜きモーダル（z-60 で NoteModal の上に表示、タブ切り替え対応） */}
       {editMode === "crop" && editingImage && (
         <ImageCropModal
           imageSrc={editingImage.dataUrl}
           onCropComplete={handleCropComplete}
           onCancel={handleEditCancel}
+          onSwitchMode={handleSwitchEditMode}
+          currentMode="crop"
         />
       )}
 
-      {/* 画像マーカーモーダル（z-60 で NoteModal の上に表示） */}
+      {/* 画像マーカーモーダル（z-60 で NoteModal の上に表示、タブ切り替え対応） */}
       {editMode === "annotate" && editingImage && (
         <ImageAnnotation
           imageSrc={editingImage.dataUrl}
           onSave={handleAnnotationComplete}
           onCancel={handleEditCancel}
+          onSwitchMode={handleSwitchEditMode}
+          currentMode="annotate"
         />
       )}
     </>

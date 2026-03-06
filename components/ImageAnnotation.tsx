@@ -16,6 +16,10 @@ type ImageAnnotationProps = {
   onSave: (annotatedDataUrl: string) => void;
   /** キャンセル時のコールバック */
   onCancel: () => void;
+  /** タブ切り替えコールバック（省略時はスタンドアロンモード、タブ非表示） */
+  onSwitchMode?: (mode: "crop" | "annotate") => void;
+  /** 現在のモード（タブのアクティブ表示用） */
+  currentMode?: "crop" | "annotate";
 };
 
 /**
@@ -135,6 +139,8 @@ export default function ImageAnnotation({
   imageSrc,
   onSave,
   onCancel,
+  onSwitchMode,
+  currentMode,
 }: ImageAnnotationProps) {
   // ================================================================
   // ステート管理
@@ -227,8 +233,9 @@ export default function ImageAnnotation({
 
         const scaleX = maxW / img.naturalWidth;
         const scaleY = maxH / img.naturalHeight;
-        // 1 以上にはしない（拡大しない）、0.01 未満にもしない（極小防止）
-        const newScale = Math.max(Math.min(scaleX, scaleY, 1), 0.01);
+        // コンテナに収まる最大倍率を計算（小さい画像も拡大表示する）
+        // 0.01 未満にはしない（極小防止）
+        const newScale = Math.max(Math.min(scaleX, scaleY), 0.01);
         setScale(newScale);
       };
       calcScale();
@@ -577,9 +584,35 @@ export default function ImageAnnotation({
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/90">
-      {/* ヘッダー: タイトル + アクションボタン */}
+      {/* ヘッダー: タブ切り替え（または単体タイトル） + アクションボタン */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/50">
-        <h3 className="text-white text-sm font-medium">マーカーを描画</h3>
+        {/* onSwitchMode が渡されている場合はタブ UI を表示、なければ単体タイトル */}
+        {onSwitchMode ? (
+          <div className="flex gap-1">
+            <button
+              className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                currentMode === "annotate"
+                  ? "bg-white/20 text-white font-medium"
+                  : "text-gray-400 hover:text-white hover:bg-white/10"
+              }`}
+              onClick={() => onSwitchMode("annotate")}
+            >
+              マーカー
+            </button>
+            <button
+              className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                currentMode === "crop"
+                  ? "bg-white/20 text-white font-medium"
+                  : "text-gray-400 hover:text-white hover:bg-white/10"
+              }`}
+              onClick={() => onSwitchMode("crop")}
+            >
+              切り抜き
+            </button>
+          </div>
+        ) : (
+          <h3 className="text-white text-sm font-medium">マーカーを描画</h3>
+        )}
         <div className="flex gap-2">
           <button
             className="px-3 py-1.5 text-sm text-gray-300 hover:text-white

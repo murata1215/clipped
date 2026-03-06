@@ -62,10 +62,10 @@ AskUserQuestion ツールは使用しないでください（DevRelay 経由で�
 app/page.tsx             - メインページ（全コンポーネント統合）
 components/NoteGrid.tsx  - @dnd-kit + useMasonry で DnD 対応 Masonry グリッド
 components/NoteCard.tsx  - forwardRef、style prop、dragListeners 対応
-components/NoteModal.tsx - 自動保存（debounce 1500ms）、画像編集連携
+components/NoteModal.tsx - 自動保存（debounce 1500ms）、画像クリックで直接編集（タブ切り替え対応）
 components/PasteHandler.tsx - window レベル paste イベントリスナー
-components/ImageCropModal.tsx - Canvas 矩形選択（react-easy-crop 廃止済み）
-components/ImageAnnotation.tsx - Canvas マーカー描画（半透明、設定永続化、Ctrl+C/Z）
+components/ImageCropModal.tsx - Canvas 矩形選択（react-easy-crop 廃止済み、タブ切り替え対応）
+components/ImageAnnotation.tsx - Canvas マーカー描画（半透明、設定永続化、Ctrl+C/Z、フィット拡大表示）
 hooks/useMasonry.ts      - JS 計算 Masonry エンジン（absolute positioning）
 lib/localStorage.ts      - LocalNote 型、CRUD、reorderNotes()
 ```
@@ -77,11 +77,14 @@ lib/localStorage.ts      - LocalNote 型、CRUD、reorderNotes()
 - **React ref + setState 競合**: `setStrokes((prev) => [...prev, ref.current!])` は ref.current をローカル変数に退避してから null 化すること
 - **useMasonry デッドロック防止**: `measureRef` 内で `setLayoutTrigger` を呼ばない（無限ループ React error #185 の原因）。代わりに `itemIds.length` 変化を useEffect で検知
 - **未測定カード**: NoteGrid で `positions` に含まれないカードを測定用不可視カードとして常にレンダリング
+- **画像編集 2クリック化**: 画像サムネイルクリック → 直接マーカー画面（タブでマーカー⇔切り抜き切り替え）。`menuImageId` state は廃止済み
+- **Canvas フィット拡大**: ImageAnnotation のスケール計算で `Math.min(scaleX, scaleY)` を使用（上限 1 を撤廃）。小さい画像も画面いっぱいに表示。Canvas 内部解像度は元画像のまま
 
 ### 実装ロードマップ
 - [x] Phase 1-3: プロジェクト初期化、localStorage CRUD、基本 UI
 - [x] Phase 4-6: PasteHandler、NoteModal、ColorPicker、TagInput、Toast、LoginNudge
 - [x] 追加: Masonry DnD、画像切り抜き、マーカー描画、Ctrl+C/Z、設定記憶
+- [x] UI改善: 画像編集 2クリック化（タブ切り替え）、Canvas フィット拡大表示
 - [ ] Phase 7: Google OAuth 認証
 - [ ] Phase 8: PostgreSQL + Prisma
 - [ ] Phase 9: API 実装
