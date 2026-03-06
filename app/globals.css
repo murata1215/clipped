@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f1f3f4;
+  --foreground: #202124;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/**
+ * スクロールバーのカスタマイズ（Chrome / Edge）
+ * Google Keep 風の控えめなスクロールバー
+ */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #dadce0;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #bdc1c6;
+}
+
+/**
+ * テキストエリアの自動拡張用
+ * NoteModal で使用する textarea が内容に応じて高さを変える
+ */
+textarea {
+  field-sizing: content;
+}
