@@ -47,9 +47,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search");
 
     // ベース URL を組み立て（画像 URL 生成用）
-    // basePath "/clipped" を考慮して、リクエスト URL からベースを構築
-    const url = new URL(request.url);
-    const baseUrl = `${url.protocol}//${url.host}/clipped`;
+    // CLIPPED_PUBLIC_URL 環境変数を優先使用（Apache reverse proxy 背後では
+    // request.url が localhost:3200 になるため、外部向け URL を環境変数で指定）
+    const baseUrl = process.env.CLIPPED_PUBLIC_URL
+      || (() => { const u = new URL(request.url); return `${u.protocol}//${u.host}/clipped`; })();
 
     // クリップ一覧を取得
     const result = await getClipList(page, perPage, search, baseUrl);
