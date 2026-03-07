@@ -7,6 +7,7 @@ Google Keep 風のメモアプリ。「貼り付けファースト」の設計�
 - **貼り付けファースト** - ページがアクティブなら Ctrl+V で即座にメモ作成
 - **画像切り抜き** - Canvas ベースの矩形選択で画像をトリミング
 - **マーカー描画** - 画像上にフリーハンドで半透明マーカーを描画（蛍光ペン風、フィット拡大表示）
+- **矢印・丸ツール** - 指示書作成に便利な矢印と丸（楕円）をドラッグで配置（色・太さ・透明度対応）
 - **2クリック画像編集** - 画像サムネイルクリックで直接マーカー画面を開き、タブでマーカー⇔切り抜きを切り替え
 - **Masonry レイアウト** - Google Keep 風のカード配置 + ドラッグ&ドロップ並べ替え
 - **自動保存** - モーダル編集時にデバウンス 1500ms で自動保存
@@ -117,6 +118,7 @@ Apache reverse proxy 経由で `ribbon-re.jp/clipped` でアクセスされる�
 - [x] Phase 4-6: PasteHandler、NoteModal、ColorPicker、TagInput、Toast、LoginNudge
 - [x] Masonry DnD、画像切り抜き、マーカー描画
 - [x] UI改善: 画像編集 2クリック化（タブ切り替え）、Canvas フィット拡大表示
+- [x] 描画ツール拡張: 矢印ツール、丸（楕円）ツール追加
 - [ ] Phase 7: Google OAuth 認証
 - [ ] Phase 8: PostgreSQL + Prisma
 - [ ] Phase 9: API 実装

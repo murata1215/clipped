@@ -65,7 +65,7 @@ components/NoteCard.tsx  - forwardRef、style prop、dragListeners 対応
 components/NoteModal.tsx - 自動保存（debounce 1500ms）、画像クリックで直接編集（タブ切り替え対応）
 components/PasteHandler.tsx - window レベル paste イベントリスナー
 components/ImageCropModal.tsx - Canvas 矩形選択（react-easy-crop 廃止済み、タブ切り替え対応）
-components/ImageAnnotation.tsx - Canvas マーカー描画（半透明、設定永続化、Ctrl+C/Z、フィット拡大表示）
+components/ImageAnnotation.tsx - Canvas マーカー描画（ペン/矢印/丸ツール、半透明、設定永続化、Ctrl+C/Z、フィット拡大表示）
 hooks/useMasonry.ts      - JS 計算 Masonry エンジン（absolute positioning）
 lib/localStorage.ts      - LocalNote 型、CRUD、reorderNotes()
 ```
@@ -79,12 +79,14 @@ lib/localStorage.ts      - LocalNote 型、CRUD、reorderNotes()
 - **未測定カード**: NoteGrid で `positions` に含まれないカードを測定用不可視カードとして常にレンダリング
 - **画像編集 2クリック化**: 画像サムネイルクリック → 直接マーカー画面（タブでマーカー⇔切り抜き切り替え）。`menuImageId` state は廃止済み
 - **Canvas フィット拡大**: ImageAnnotation のスケール計算で `Math.min(scaleX, scaleY)` を使用（上限 1 を撤廃）。小さい画像も画面いっぱいに表示。Canvas 内部解像度は元画像のまま
+- **ツール切り替え**: ImageAnnotation は ToolType（"pen" | "arrow" | "circle"）で描画モードを分岐。Stroke 型に `toolType?` フィールド追加（undefined は後方互換で "pen"）。矢印は drawArrow（直線+三角矢じり fill）、丸は drawEllipse（ctx.ellipse() stroke のみ）。ツール選択も localStorage に保存
 
 ### 実装ロードマップ
 - [x] Phase 1-3: プロジェクト初期化、localStorage CRUD、基本 UI
 - [x] Phase 4-6: PasteHandler、NoteModal、ColorPicker、TagInput、Toast、LoginNudge
 - [x] 追加: Masonry DnD、画像切り抜き、マーカー描画、Ctrl+C/Z、設定記憶
 - [x] UI改善: 画像編集 2クリック化（タブ切り替え）、Canvas フィット拡大表示
+- [x] 描画ツール拡張: 矢印ツール、丸（楕円）ツール追加（指示書作成対応）
 - [ ] Phase 7: Google OAuth 認証
 - [ ] Phase 8: PostgreSQL + Prisma
 - [ ] Phase 9: API 実装
