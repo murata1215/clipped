@@ -6,6 +6,7 @@ import Header from "@/components/Header";
 import NewNoteInput from "@/components/NewNoteInput";
 import PasteHandler from "@/components/PasteHandler";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import SyncButton from "@/components/SyncButton";
 
 /**
  * NoteGrid: @dnd-kit/core がブラウザ専用 DOM API に依存するため、
@@ -242,6 +243,9 @@ export default function HomePage() {
             onClose={handleModalClose}
           />
         )}
+
+        {/* サーバー同期ボタン（右下フローティング） */}
+        <SyncButton onShowToast={showToast} />
 
         {/* トースト通知 */}
         <Toast toasts={toasts} onDismiss={dismissToast} />

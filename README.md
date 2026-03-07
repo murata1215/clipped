@@ -13,6 +13,8 @@ Google Keep 風のメモアプリ。「貼り付けファースト」の設計�
 - **自動保存** - モーダル編集時にデバウンス 1500ms で自動保存
 - **タグ・カラー** - メモにタグ付けと背景色（6色）を設定可能
 - **キーボードショートカット** - Ctrl+Z（アンドゥ）、Ctrl+C（クリップボードコピー）
+- **REST API** - 外部サービス連携用 API（クリップ一覧/詳細/画像DL、Bearer 認証）
+- **サーバー同期** - localStorage データをサーバーに手動同期（API 経由で外部アクセス可能に）
 
 ## 技術スタック
 
@@ -35,6 +37,12 @@ clipped/
 │   ├── layout.tsx          # ルートレイアウト
 │   ├── page.tsx            # メインページ（全機能統合）
 │   └── globals.css         # グローバル CSS
+├── app/
+│   ├── api/v1/
+│   │   ├── clips/route.ts        # クリップ一覧 API
+│   │   ├── clips/[clipId]/route.ts # クリップ詳細 API
+│   │   ├── photos/[photoId]/route.ts # 画像ダウンロード API
+│   │   └── sync/route.ts         # データ同期 API
 ├── components/
 │   ├── Header.tsx          # ヘッダー（検索バー + ログインボタン）
 │   ├── NewNoteInput.tsx    # 新規メモ作成エリア
@@ -42,6 +50,7 @@ clipped/
 │   ├── NoteCard.tsx        # 個別メモカード
 │   ├── NoteModal.tsx       # メモ編集モーダル（自動保存）
 │   ├── PasteHandler.tsx    # グローバルペースト処理
+│   ├── SyncButton.tsx      # サーバー同期ボタン
 │   ├── ImageCropModal.tsx  # Canvas 矩形選択による画像切り抜き
 │   ├── ImageAnnotation.tsx # Canvas マーカー描画
 │   ├── ColorPicker.tsx     # 背景色選択（6色）
@@ -54,8 +63,13 @@ clipped/
 │   └── useMasonry.ts       # Masonry レイアウトエンジン
 ├── lib/
 │   ├── localStorage.ts     # localStorage CRUD
+│   ├── apiAuth.ts          # API キー認証
+│   ├── serverStorage.ts    # サーバーサイドストレージ
 │   ├── imageUtils.ts       # 画像リサイズユーティリティ
 │   └── cropUtils.ts        # 画像切り抜きユーティリティ
+├── data/                   # 同期データ（.gitignore 対象）
+│   ├── clips.json          # クリップメタデータ
+│   └── photos/             # 画像ファイル
 ├── docs/
 │   └── Clipped_仕様書.md   # 仕様書
 └── ecosystem.config.js     # pm2 設定
@@ -119,9 +133,10 @@ Apache reverse proxy 経由で `ribbon-re.jp/clipped` でアクセスされる�
 - [x] Masonry DnD、画像切り抜き、マーカー描画
 - [x] UI改善: 画像編集 2クリック化（タブ切り替え）、Canvas フィット拡大表示
 - [x] 描画ツール拡張: 矢印ツール、丸（楕円）ツール追加
+- [x] REST API: PixDraft 連携（クリップ一覧/詳細/画像DL/同期、Bearer 認証）
 - [ ] Phase 7: Google OAuth 認証
-- [ ] Phase 8: PostgreSQL + Prisma
-- [ ] Phase 9: API 実装
+- [ ] Phase 8: PostgreSQL + Prisma（API ストレージを JSON → DB に移行）
+- [ ] Phase 9: API 拡張（署名付き URL、サムネイルリサイズ、Webhook）
 - [ ] Phase 10: データ移行（localStorage → DB）
 - [ ] Phase 11: 本番デプロイ最終調整
 

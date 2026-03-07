@@ -59,16 +59,34 @@ AskUserQuestion ツールは使用しないでください（DevRelay 経由で�
 
 ### ファイル構成
 ```
-app/page.tsx             - メインページ（全コンポーネント統合）
+app/page.tsx             - メインページ（全コンポーネント統合 + SyncButton）
+app/api/v1/clips/route.ts       - EP1: クリップ一覧 API
+app/api/v1/clips/[clipId]/route.ts - EP2: クリップ詳細 API
+app/api/v1/photos/[photoId]/route.ts - EP3: 画像ダウンロード API
+app/api/v1/sync/route.ts        - データ同期 API（localStorage → サーバー）
 components/NoteGrid.tsx  - @dnd-kit + useMasonry で DnD 対応 Masonry グリッド
 components/NoteCard.tsx  - forwardRef、style prop、dragListeners 対応
 components/NoteModal.tsx - 自動保存（debounce 1500ms）、画像クリックで直接編集（タブ切り替え対応）
 components/PasteHandler.tsx - window レベル paste イベントリスナー
+components/SyncButton.tsx - サーバー同期ボタン（右下フローティング）
 components/ImageCropModal.tsx - Canvas 矩形選択（react-easy-crop 廃止済み、タブ切り替え対応）
 components/ImageAnnotation.tsx - Canvas マーカー描画（ペン/矢印/丸ツール、半透明、設定永続化、Ctrl+C/Z、フィット拡大表示）
 hooks/useMasonry.ts      - JS 計算 Masonry エンジン（absolute positioning）
 lib/localStorage.ts      - LocalNote 型、CRUD、reorderNotes()
+lib/apiAuth.ts           - API キー認証ヘルパー（Bearer トークン検証）
+lib/serverStorage.ts     - サーバーサイドストレージ（JSON + 画像ファイル操作）
+data/clips.json          - 同期されたクリップメタデータ（.gitignore 対象）
+data/photos/             - 同期された画像ファイル（.gitignore 対象）
 ```
+
+### REST API 仕様
+- **認証**: `Authorization: Bearer {CLIPPED_API_KEY}` （.env.local で設定）
+- **EP1 クリップ一覧**: `GET /api/v1/clips?page=1&per_page=20&search=xxx` → JSON（ページネーション付き）
+- **EP2 クリップ詳細**: `GET /api/v1/clips/{id}` → JSON（画像 URL 付き）
+- **EP3 画像ダウンロード**: `GET /api/v1/photos/{id}` → 画像バイナリ
+- **データ同期**: `POST /api/v1/sync` → localStorage データをサーバーに保存
+- **データフロー**: ブラウザで「サーバーに同期」ボタン → POST /api/v1/sync → data/ に保存 → GET API で取得可能に
+- **ストレージ**: JSON ファイル + 画像ファイル（Phase 8 で PostgreSQL に移行予定）
 
 ### 技術的な注意点
 - **SSR 無効化**: NoteGrid, NoteModal は `next/dynamic` + `ssr: false` で読み込み（Canvas / @dnd-kit がブラウザ専用）
@@ -87,8 +105,9 @@ lib/localStorage.ts      - LocalNote 型、CRUD、reorderNotes()
 - [x] 追加: Masonry DnD、画像切り抜き、マーカー描画、Ctrl+C/Z、設定記憶
 - [x] UI改善: 画像編集 2クリック化（タブ切り替え）、Canvas フィット拡大表示
 - [x] 描画ツール拡張: 矢印ツール、丸（楕円）ツール追加（指示書作成対応）
+- [x] REST API: PixDraft 連携（クリップ一覧/詳細/画像DL/同期、Bearer 認証）
 - [ ] Phase 7: Google OAuth 認証
-- [ ] Phase 8: PostgreSQL + Prisma
-- [ ] Phase 9: API 実装
+- [ ] Phase 8: PostgreSQL + Prisma（API ストレージを JSON → DB に移行）
+- [ ] Phase 9: API 拡張（署名付き URL、サムネイルリサイズ、Webhook）
 - [ ] Phase 10: データ移行（localStorage → DB）
 - [ ] Phase 11: 本番デプロイ最終調整
