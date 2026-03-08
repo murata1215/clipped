@@ -72,10 +72,20 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
   /** モーダルコンテナの ref */
   const modalRef = useRef<HTMLDivElement>(null);
 
-  /** 画像編集モード（null: なし / "crop": 切り抜き / "annotate": マーカー） */
-  const [editMode, setEditMode] = useState<ImageEditMode>(null);
-  /** 編集対象の画像 ID */
-  const [editingImageId, setEditingImageId] = useState<string | null>(null);
+  /**
+   * 画像編集モード（null: メモ編集 / "crop": 切り抜き / "annotate": マーカー）
+   * 画像付きメモの場合はマーカーモードで開始し、ペタペタ貼り付け後に
+   * カードクリックで直接画像編集に入れるようにする。
+   * 画像なしメモの場合は従来通りメモ編集画面（null）で開始。
+   */
+  const hasImages = note.images.length > 0;
+  const [editMode, setEditMode] = useState<ImageEditMode>(
+    hasImages ? "annotate" : null
+  );
+  /** 編集対象の画像 ID（画像ありメモは1枚目をデフォルト選択） */
+  const [editingImageId, setEditingImageId] = useState<string | null>(
+    hasImages ? note.images[0].id : null
+  );
   /** 保存エラーメッセージ（容量超過時に表示） */
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -139,18 +149,12 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
 
   /**
    * Esc キーでモーダルを閉じる
-   * 画像編集モードが開いている場合は、まず画像編集を閉じる
+   * 画像編集モード中でも一覧に直帰する（保存して閉じる）。
    */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (editMode) {
-          // 画像編集モードが開いている場合はそちらを閉じる
-          setEditMode(null);
-          setEditingImageId(null);
-        } else {
-          handleClose();
-        }
+        handleClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -250,13 +254,58 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
   );
 
   /**
-   * マーカー描画完了ハンドラ
-   * 描画後の DataURL で画像データを更新する
-   * @param annotatedDataUrl - マーカー描画後の base64 DataURL
+   * 画像編集からの「戻る」ハンドラ
+   *
+   * マーカー画面の「戻る」ボタンや黒背景クリック時に呼ばれる。
+   * ImageAnnotation から描画後の DataURL が引数として渡される。
+   *
+   * 【重要】React の setImages は非同期バッチ処理のため、
+   * onSave(dataUrl) → setImages → onCancel() → updateNote(images)
+   * の順では images が古いクロージャ値になり描画が保存されない。
+   * そのため DataURL を引数で直接受け取り、ローカル変数 finalImages を
+   * 同期的に構築してから updateNote に渡す方式にしている。
+   *
+   * @param annotatedDataUrl - マーカー描画後の Canvas DataURL（省略時は画像更新なし）
    */
-  const handleAnnotationComplete = useCallback(
-    (annotatedDataUrl: string) => {
-      if (!editingImageId) return;
+  const handleEditCancel = useCallback((annotatedDataUrl?: string) => {
+    // 保留中の自動保存タイマーをクリアして即座に保存
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    // 描画後 DataURL が渡された場合、images を同期的に更新
+    let finalImages = images;
+    if (annotatedDataUrl && editingImageId) {
+      finalImages = images.map((img) =>
+        img.id === editingImageId
+          ? { ...img, dataUrl: annotatedDataUrl }
+          : img
+      );
+      // React state も更新（画面表示の整合性のため）
+      setImages(finalImages);
+    }
+
+    // 同期的に構築した finalImages で localStorage に保存
+    updateNote(note.id, { title, body, color, tags, images: finalImages });
+    onClose();
+  }, [note.id, title, body, color, tags, images, editingImageId, onClose]);
+
+  /**
+   * 画像編集モード切り替えハンドラ
+   *
+   * タブ UI からの呼び出しで、マーカー ⇔ 切り抜き ⇔ メモ を切り替える。
+   * "memo" が指定された場合は画像編集を終了してメモ編集画面に戻る。
+   * editingImageId は維持したまま editMode のみ変更する。
+   *
+   * ImageAnnotation からの呼び出し時は annotatedDataUrl が渡されるため、
+   * タブ切り替え前に描画データを images に同期反映する。
+   *
+   * @param mode - 切り替え先のモード
+   * @param annotatedDataUrl - マーカー描画後の Canvas DataURL（マーカータブからの切り替え時）
+   */
+  const handleSwitchEditMode = useCallback((mode: "crop" | "annotate" | "memo", annotatedDataUrl?: string) => {
+    // 描画後 DataURL が渡された場合、images を同期的に更新
+    if (annotatedDataUrl && editingImageId) {
       setImages((prev) =>
         prev.map((img) =>
           img.id === editingImageId
@@ -264,28 +313,16 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
             : img
         )
       );
+    }
+
+    if (mode === "memo") {
+      // メモ編集画面に切り替え（画像編集を終了）
       setEditMode(null);
       setEditingImageId(null);
-    },
-    [editingImageId]
-  );
-
-  /**
-   * 画像編集キャンセルハンドラ
-   */
-  const handleEditCancel = useCallback(() => {
-    setEditMode(null);
-    setEditingImageId(null);
-  }, []);
-
-  /**
-   * 画像編集モード切り替えハンドラ
-   * タブ UI からの呼び出しで、マーカー ⇔ 切り抜きを切り替える。
-   * editingImageId は維持したまま editMode のみ変更する。
-   */
-  const handleSwitchEditMode = useCallback((mode: "crop" | "annotate") => {
-    setEditMode(mode);
-  }, []);
+    } else {
+      setEditMode(mode);
+    }
+  }, [editingImageId]);
 
   /** モーダルの背景色クラス */
   const bgColor = colorBgMap[color] || colorBgMap.default;
@@ -413,7 +450,6 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
       {editMode === "annotate" && editingImage && (
         <ImageAnnotation
           imageSrc={editingImage.dataUrl}
-          onSave={handleAnnotationComplete}
           onCancel={handleEditCancel}
           onSwitchMode={handleSwitchEditMode}
           currentMode="annotate"

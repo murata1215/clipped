@@ -10,9 +10,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
  * ツールの種類
  * - "pen": フリーハンドペン描画
  * - "arrow": 矢印ツール（始点→終点にきれいな矢印を描画）
- * - "circle": 丸（楕円）ツール（ドラッグで楕円を配置）
+ * - "circle": 手書き風の〇ツール（低周波うねりで自然な歪みのある丸）
+ * - "ellipse": 正確な〇ツール（幾何学的に正確な楕円を描画）
  */
-type ToolType = "pen" | "arrow" | "circle";
+type ToolType = "pen" | "arrow" | "circle" | "ellipse";
 
 /**
  * ImageAnnotation コンポーネントのプロパティ
@@ -20,12 +21,19 @@ type ToolType = "pen" | "arrow" | "circle";
 type ImageAnnotationProps = {
   /** 描画対象の画像 DataURL */
   imageSrc: string;
-  /** 描画確定時のコールバック（描画後の DataURL を返す） */
-  onSave: (annotatedDataUrl: string) => void;
-  /** キャンセル時のコールバック */
-  onCancel: () => void;
-  /** タブ切り替えコールバック（省略時はスタンドアロンモード、タブ非表示） */
-  onSwitchMode?: (mode: "crop" | "annotate") => void;
+  /**
+   * 「戻る」ボタンや黒背景クリック時のコールバック
+   *
+   * annotatedDataUrl が渡された場合、呼び出し元で同期的に images を更新してから
+   * localStorage に保存すること（React の setImages は非同期のため）。
+   * Canvas の描画結果を直接引数で渡すことで、非同期 state 更新の競合を回避する。
+   */
+  onCancel: (annotatedDataUrl?: string) => void;
+  /**
+   * タブ切り替えコールバック（省略時はスタンドアロンモード、タブ非表示）
+   * annotatedDataUrl が渡された場合、切り替え前に画像データを同期的に反映すること
+   */
+  onSwitchMode?: (mode: "crop" | "annotate" | "memo", annotatedDataUrl?: string) => void;
   /** 現在のモード（タブのアクティブ表示用） */
   currentMode?: "crop" | "annotate";
 };
@@ -96,7 +104,7 @@ const PEN_OPACITY_DEFAULT = 0.4;
 const MARKER_PREFS_KEY = "clipped:marker-prefs";
 
 /** ToolType として有効な値の一覧（バリデーション用） */
-const VALID_TOOL_TYPES: ToolType[] = ["pen", "arrow", "circle"];
+const VALID_TOOL_TYPES: ToolType[] = ["pen", "arrow", "circle", "ellipse"];
 
 // ============================================================
 // ユーティリティ関数
@@ -222,9 +230,133 @@ function drawArrow(ctx: CanvasRenderingContext2D, stroke: Stroke) {
 }
 
 /**
- * 楕円ストロークを描画する
+ * 手書き風の楕円ストロークを描画する
  *
- * 2点をバウンディングボックスの対角とし、その中に収まる楕円を描画する。
+ * テストの採点で先生が赤ペンで描くような「手書き風の〇」を描画する。
+ * 2点をバウンディングボックスの対角とし、その中に収まる楕円をベースに、
+ * 低周波の sin 波うねりで全体をゆるやかに歪ませる。
+ *
+ * 手書き感のポイント:
+ * 1. **低周波うねり**: sin 波 2〜3 波の重ね合わせで楕円全体がゆるやかに歪む
+ *    （高周波ランダムだとカクカクになるため、低周波にすることで滑らかな歪みを実現）
+ * 2. **滑らかな曲線パス**: quadraticCurveTo で 1 本の滑らかな曲線として描画
+ *    （セグメントごとの beginPath/lineTo だとつなぎ目が目立つため）
+ * 3. **始点・終点のずれ**: 開始角度と終了角度を少しずらして完全に閉じない
+ * 4. **決定的疑似乱数**: sin ベースの疑似乱数で再描画時も同じ揺らぎを維持
+ *
+ * points[0] = ドラッグ始点（バウンディングボックスの角1）
+ * points[1] = ドラッグ終点（バウンディングボックスの対角）
+ *
+ * @param ctx - Canvas 2D コンテキスト
+ * @param stroke - 楕円ストロークデータ
+ */
+function drawEllipse(ctx: CanvasRenderingContext2D, stroke: Stroke) {
+  const p1 = stroke.points[0];
+  const p2 = stroke.points[1];
+  if (!p1 || !p2) return;
+
+  // バウンディングボックスの中心点を計算（従来と同じ）
+  const centerX = (p1.x + p2.x) / 2;
+  const centerY = (p1.y + p2.y) / 2;
+
+  // X方向・Y方向の半径を計算（Math.abs でドラッグ方向に依存しない）
+  const radiusX = Math.abs(p2.x - p1.x) / 2;
+  const radiusY = Math.abs(p2.y - p1.y) / 2;
+
+  // 半径が極小の場合は描画しない（クリックのみの場合）
+  if (radiusX < 1 && radiusY < 1) return;
+
+  // --- 決定的疑似乱数生成器 ---
+  // ストロークの座標値からシードを生成することで、
+  // 同じストロークは再描画（Undo/Redo、Canvas 再描画）時にも同じ揺らぎを維持する。
+  // ドラッグ中のプレビューでも p1/p2 が同じならちらつかない。
+  const seed = Math.abs(p1.x * 1000 + p1.y * 100 + p2.x * 10 + p2.y);
+  const pseudoRandom = (i: number) => {
+    const x = Math.sin(seed + i * 127.1) * 43758.5453;
+    return x - Math.floor(x); // 0.0〜1.0 の疑似乱数
+  };
+
+  // --- 手書き風パラメータ ---
+  const segments = 72;           // 楕円を構成する点の数（滑らかさのため多め）
+  const maxRadius = Math.max(radiusX, radiusY);
+  // 揺らぎの大きさ: 半径の 3% を基本とする（大きすぎるとガタガタ、小さすぎると機械的）
+  const wobbleAmount = maxRadius * 0.03;
+  const lw = stroke.lineWidth;
+
+  // --- 低周波うねり用の位相オフセット（疑似乱数で決定） ---
+  // sin 波の位相をランダムにすることで、毎回違う形のゆらぎになる
+  const phase1 = pseudoRandom(100) * Math.PI * 2; // 第1波の位相
+  const phase2 = pseudoRandom(101) * Math.PI * 2; // 第2波の位相
+  const phase3 = pseudoRandom(102) * Math.PI * 2; // 第3波の位相
+
+  // --- 手書き風楕円パスを生成 ---
+  // 開始角度を少しずらす（手書きの始点のランダム感）
+  const startAngle = pseudoRandom(999) * 0.4 - 0.2;
+  // 終了角度を完全に閉じず隙間を残す（手書き感: 始点と終点が繋がらない）
+  // 隙間は 0.15〜0.4 rad（約 9°〜23°）で、参考画像のような自然な開きを表現
+  const gap = pseudoRandom(998) * 0.25 + 0.15;
+  const endAngle = Math.PI * 2 + startAngle - gap;
+
+  // 楕円パスの各点を計算し、低周波 sin 波うねりを加算
+  const pathPoints: { x: number; y: number }[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const angle = startAngle + (endAngle - startAngle) * t;
+
+    // --- 低周波うねり（sin 波の重ね合わせ） ---
+    // 2倍角（楕円1周で2回膨らむ）+ 3倍角（3回）+ 5倍角（5回）を重ねることで
+    // 自然な歪みを作る。高周波成分ほど振幅を小さくして滑らかに。
+    const radialOffset =
+      Math.sin(angle * 2 + phase1) * wobbleAmount * 1.0 +  // 第1波: 大きなうねり
+      Math.sin(angle * 3 + phase2) * wobbleAmount * 0.5 +  // 第2波: 中くらいの歪み
+      Math.sin(angle * 5 + phase3) * wobbleAmount * 0.25;  // 第3波: 微細な揺らぎ
+
+    // 基本の楕円座標 + 半径方向のうねりオフセット
+    // cos/sin で方向ベクトルを計算し、radialOffset を半径方向に加算
+    const rx = radiusX + radialOffset;
+    const ry = radiusY + radialOffset;
+    const x = centerX + rx * Math.cos(angle);
+    const y = centerY + ry * Math.sin(angle);
+
+    pathPoints.push({ x, y });
+  }
+
+  // --- 描画: 1 本の滑らかな曲線パスとして描画 ---
+  // quadraticCurveTo を使い、隣接する点の中点を通る滑らかなスプライン曲線で描画。
+  // セグメントごとの beginPath/lineTo 方式（前回実装）だとつなぎ目が見えてカクカクに
+  // なるため、1 本の path + quadraticCurveTo で滑らかさを確保する。
+  ctx.beginPath();
+  ctx.strokeStyle = stroke.color;
+  ctx.lineWidth = lw;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // 始点に移動
+  ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+
+  // 各ポイント間を quadraticCurveTo で滑らかに接続
+  // 制御点 = 現在のポイント、通過点 = 現在ポイントと次ポイントの中点
+  // これにより全てのポイントが滑らかな曲線で結ばれる
+  for (let i = 0; i < pathPoints.length - 1; i++) {
+    const midX = (pathPoints[i].x + pathPoints[i + 1].x) / 2;
+    const midY = (pathPoints[i].y + pathPoints[i + 1].y) / 2;
+    ctx.quadraticCurveTo(pathPoints[i].x, pathPoints[i].y, midX, midY);
+  }
+
+  // 最後のポイントまで線を引く（中点補間のため最終点への lineTo が必要）
+  const last = pathPoints[pathPoints.length - 1];
+  ctx.lineTo(last.x, last.y);
+
+  ctx.stroke();
+}
+
+/**
+ * 機械的に正確な楕円ストロークを描画する
+ *
+ * 2点をバウンディングボックスの対角とし、その中に収まる幾何学的に正確な楕円を描画する。
+ * 手書き風の drawEllipse とは異なり、揺らぎや歪みのない完璧な楕円線を引く。
+ * 指示書で正確な範囲を示したい場合などに使用する。
+ *
  * ストロークのみ（fill なし）で、指定色・太さ・透明度を適用する。
  * Math.abs でドラッグ方向に依存しない（どの方向にドラッグしても正しく動作）。
  *
@@ -234,7 +366,7 @@ function drawArrow(ctx: CanvasRenderingContext2D, stroke: Stroke) {
  * @param ctx - Canvas 2D コンテキスト
  * @param stroke - 楕円ストロークデータ
  */
-function drawEllipse(ctx: CanvasRenderingContext2D, stroke: Stroke) {
+function drawMechanicalEllipse(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   const p1 = stroke.points[0];
   const p2 = stroke.points[1];
   if (!p1 || !p2) return;
@@ -256,7 +388,7 @@ function drawEllipse(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // ctx.ellipse() で楕円パスを作成
+  // ctx.ellipse() で幾何学的に正確な楕円パスを作成
   // 引数: centerX, centerY, radiusX, radiusY, rotation, startAngle, endAngle
   ctx.ellipse(centerX, centerY, Math.max(radiusX, 0.5), Math.max(radiusY, 0.5), 0, 0, Math.PI * 2);
   ctx.stroke();
@@ -286,7 +418,9 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke | null) {
   if (tool === "arrow") {
     drawArrow(ctx, stroke);
   } else if (tool === "circle") {
-    drawEllipse(ctx, stroke);
+    drawEllipse(ctx, stroke);       // 手書き風の〇
+  } else if (tool === "ellipse") {
+    drawMechanicalEllipse(ctx, stroke); // 正確な〇
   } else {
     drawPenStroke(ctx, stroke);
   }
@@ -324,7 +458,6 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke | null) {
  */
 export default function ImageAnnotation({
   imageSrc,
-  onSave,
   onCancel,
   onSwitchMode,
   currentMode,
@@ -691,17 +824,42 @@ export default function ImageAnnotation({
   }, []);
 
   /**
-   * 保存
-   * 画像 + 描画を結合した DataURL を生成して親コンポーネントに渡す
+   * 「戻る」ボタン / 黒背景クリック時のハンドラ
+   *
+   * Canvas の描画内容を DataURL に変換し、onCancel に直接渡す。
+   * これにより NoteModal 側で images を同期的に更新してから updateNote できる。
+   *
+   * 【重要】handleSave() → onCancel() の2段階呼び出しだと、
+   * setImages（非同期）が完了する前に updateNote が走り描画が保存されないため、
+   * DataURL を引数として直接渡す方式に変更した。
    */
-  const handleSave = useCallback(() => {
+  const handleBack = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Canvas の内容を PNG DataURL に変換
+    if (!canvas) {
+      onCancel();
+      return;
+    }
+    // Canvas の描画内容を DataURL に変換して直接渡す
     const dataUrl = canvas.toDataURL("image/png");
-    onSave(dataUrl);
-  }, [onSave]);
+    onCancel(dataUrl);
+  }, [onCancel]);
+
+  /**
+   * タブ切り替え時のハンドラ
+   *
+   * 自分自身（annotate）以外のタブに切り替える場合、
+   * Canvas の描画内容を DataURL に変換して onSwitchMode に渡す。
+   * handleBack と同様、setImages の非同期問題を回避するために
+   * DataURL を引数として直接渡す方式にしている。
+   *
+   * @param mode - 切り替え先のモード（"crop" / "annotate" / "memo"）
+   */
+  const handleTabSwitch = useCallback((mode: "crop" | "annotate" | "memo") => {
+    if (mode === "annotate") return; // 自分自身への切り替えは無視
+    const canvas = canvasRef.current;
+    const dataUrl = canvas ? canvas.toDataURL("image/png") : undefined;
+    if (onSwitchMode) onSwitchMode(mode, dataUrl);
+  }, [onSwitchMode]);
 
   /**
    * Canvas の内容をクリップボードにコピーする
@@ -779,7 +937,8 @@ export default function ImageAnnotation({
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/90">
       {/* ヘッダー: タブ切り替え（または単体タイトル） + アクションボタン */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/50">
-        {/* onSwitchMode が渡されている場合はタブ UI を表示、なければ単体タイトル */}
+        {/* タブ UI: マーカー / 切り抜き / メモ の3タブ（onSwitchMode がある場合） */}
+        {/* タブ切り替え時は自動保存してから遷移する（handleTabSwitch） */}
         {onSwitchMode ? (
           <div className="flex gap-1">
             <button
@@ -788,7 +947,7 @@ export default function ImageAnnotation({
                   ? "bg-white/20 text-white font-medium"
                   : "text-gray-400 hover:text-white hover:bg-white/10"
               }`}
-              onClick={() => onSwitchMode("annotate")}
+              onClick={() => handleTabSwitch("annotate")}
             >
               マーカー
             </button>
@@ -798,28 +957,29 @@ export default function ImageAnnotation({
                   ? "bg-white/20 text-white font-medium"
                   : "text-gray-400 hover:text-white hover:bg-white/10"
               }`}
-              onClick={() => onSwitchMode("crop")}
+              onClick={() => handleTabSwitch("crop")}
             >
               切り抜き
+            </button>
+            <button
+              className="px-3 py-1.5 text-sm rounded transition-colors
+                         text-gray-400 hover:text-white hover:bg-white/10"
+              onClick={() => handleTabSwitch("memo")}
+            >
+              メモ
             </button>
           </div>
         ) : (
           <h3 className="text-white text-sm font-medium">マーカーを描画</h3>
         )}
+        {/* 右上: 「戻る」ボタン（保存して閉じる） */}
         <div className="flex gap-2">
           <button
             className="px-3 py-1.5 text-sm text-gray-300 hover:text-white
                        rounded transition-colors"
-            onClick={onCancel}
+            onClick={handleBack}
           >
-            キャンセル
-          </button>
-          <button
-            className="px-3 py-1.5 text-sm bg-blue-500 text-white
-                       rounded hover:bg-blue-600 transition-colors"
-            onClick={handleSave}
-          >
-            保存
+            戻る
           </button>
         </div>
       </div>
@@ -864,9 +1024,9 @@ export default function ImageAnnotation({
             </svg>
           </button>
 
-          {/* 丸（楕円）ツール */}
+          {/* 手書き〇ツール（低周波うねりで自然な歪みのある丸） */}
           <button
-            title="丸（楕円）"
+            title="〇（手書き）"
             className={`w-8 h-8 flex items-center justify-center rounded transition-all
               ${toolType === "circle"
                 ? "bg-white/20 border-2 border-white"
@@ -874,9 +1034,25 @@ export default function ImageAnnotation({
               }`}
             onClick={() => setToolType("circle")}
           >
-            {/* 丸アイコン（SVG） */}
+            {/* 手書き風の丸アイコン（SVG）: 少し歪んだ楕円で手書き感を表現 */}
             <svg className="w-4 h-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <circle cx="12" cy="12" r="9" />
+              <ellipse cx="12" cy="12" rx="9" ry="8" transform="rotate(-5 12 12)" />
+            </svg>
+          </button>
+
+          {/* 正確な〇ツール（幾何学的に正確な楕円） */}
+          <button
+            title="〇（正確）"
+            className={`w-8 h-8 flex items-center justify-center rounded transition-all
+              ${toolType === "ellipse"
+                ? "bg-white/20 border-2 border-white"
+                : "border-2 border-gray-600 hover:border-gray-400"
+              }`}
+            onClick={() => setToolType("ellipse")}
+          >
+            {/* 正確な丸アイコン（SVG）: 破線の円で「正確・幾何学的」を表現 */}
+            <svg className="w-4 h-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <circle cx="12" cy="12" r="9" strokeDasharray="4 2" />
             </svg>
           </button>
         </div>
@@ -982,10 +1158,11 @@ export default function ImageAnnotation({
         </button>
       </div>
 
-      {/* Canvas エリア */}
+      {/* Canvas エリア: 黒背景（Canvas 外）クリックで保存して一覧に直帰 */}
       <div
         ref={containerRef}
         className="flex-1 flex items-center justify-center overflow-hidden p-4"
+        onClick={handleBack}
       >
         {imageLoaded && (
           <canvas
@@ -999,6 +1176,7 @@ export default function ImageAnnotation({
               touchAction: "none",
             }}
             className="border border-gray-600 rounded"
+            onClick={(e) => e.stopPropagation()}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}

@@ -67,7 +67,7 @@ app/api/v1/sync/route.ts        - データ同期 API（localStorage → サー�
 components/NoteGrid.tsx  - @dnd-kit + useMasonry で DnD 対応 Masonry グリッド
 components/NoteCard.tsx  - forwardRef、style prop、dragListeners 対応
 components/NoteModal.tsx - 自動保存（debounce 1500ms）、画像クリックで直接編集（タブ切り替え対応）
-components/PasteHandler.tsx - window レベル paste イベントリスナー
+components/PasteHandler.tsx - window レベル paste + dragover/drop イベントリスナー（画像ファイルドロップ対応）
 components/SyncButton.tsx - サーバー同期ボタン（右下フローティング）
 components/ImageCropModal.tsx - Canvas 矩形選択（react-easy-crop 廃止済み、タブ切り替え対応）
 components/ImageAnnotation.tsx - Canvas マーカー描画（ペン/矢印/丸ツール、半透明、設定永続化、Ctrl+C/Z、フィット拡大表示）
@@ -98,6 +98,7 @@ data/photos/             - 同期された画像ファイル（.gitignore 対象
 - **画像編集 2クリック化**: 画像サムネイルクリック → 直接マーカー画面（タブでマーカー⇔切り抜き切り替え）。`menuImageId` state は廃止済み
 - **Canvas フィット拡大**: ImageAnnotation のスケール計算で `Math.min(scaleX, scaleY)` を使用（上限 1 を撤廃）。小さい画像も画面いっぱいに表示。Canvas 内部解像度は元画像のまま
 - **ツール切り替え**: ImageAnnotation は ToolType（"pen" | "arrow" | "circle"）で描画モードを分岐。Stroke 型に `toolType?` フィールド追加（undefined は後方互換で "pen"）。矢印は drawArrow（直線+三角矢じり fill）、丸は drawEllipse（ctx.ellipse() stroke のみ）。ツール選択も localStorage に保存
+- **ファイルドロップ**: PasteHandler が window レベルの dragover/drop イベントもリッスン。画像ファイルのみ対応（1ファイル = 1メモ）。@dnd-kit は PointerEvent ベースのため HTML5 DnD イベントとは競合しない。モーダルが開いている時はドロップ無効
 
 ### 実装ロードマップ
 - [x] Phase 1-3: プロジェクト初期化、localStorage CRUD、基本 UI
@@ -106,6 +107,7 @@ data/photos/             - 同期された画像ファイル（.gitignore 対象
 - [x] UI改善: 画像編集 2クリック化（タブ切り替え）、Canvas フィット拡大表示
 - [x] 描画ツール拡張: 矢印ツール、丸（楕円）ツール追加（指示書作成対応）
 - [x] REST API: PixDraft 連携（クリップ一覧/詳細/画像DL/同期、Bearer 認証）
+- [x] ファイルドロップ: 画像ファイルをブラウザにドラッグ&ドロップでメモ作成
 - [ ] Phase 7: Google OAuth 認証
 - [ ] Phase 8: PostgreSQL + Prisma（API ストレージを JSON → DB に移行）
 - [ ] Phase 9: API 拡張（署名付き URL、サムネイルリサイズ、Webhook）

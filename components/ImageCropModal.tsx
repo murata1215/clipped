@@ -15,10 +15,17 @@ type ImageCropModalProps = {
   imageSrc: string;
   /** 切り抜き確定時のコールバック（切り抜き後の DataURL を返す） */
   onCropComplete: (croppedDataUrl: string) => void;
-  /** モーダルキャンセル時のコールバック */
-  onCancel: () => void;
-  /** タブ切り替えコールバック（省略時はスタンドアロンモード、タブ非表示） */
-  onSwitchMode?: (mode: "crop" | "annotate") => void;
+  /**
+   * モーダルキャンセル（「戻る」）時のコールバック
+   * ImageAnnotation と型を揃えるため annotatedDataUrl をオプショナルで受け取るが、
+   * 切り抜きモードからは引数なしで呼ばれる
+   */
+  onCancel: (annotatedDataUrl?: string) => void;
+  /**
+   * タブ切り替えコールバック（省略時はスタンドアロンモード、タブ非表示）
+   * ImageAnnotation と型を揃えるため annotatedDataUrl をオプショナルで受け取る
+   */
+  onSwitchMode?: (mode: "crop" | "annotate" | "memo", annotatedDataUrl?: string) => void;
   /** 現在のモード（タブのアクティブ表示用） */
   currentMode?: "crop" | "annotate";
 };
@@ -680,7 +687,7 @@ export default function ImageCropModal({
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/90">
       {/* ヘッダー: タブ切り替え（または単体タイトル） + アクションボタン */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/50">
-        {/* onSwitchMode が渡されている場合はタブ UI を表示、なければ単体タイトル */}
+        {/* タブ UI: マーカー / 切り抜き / メモ の3タブ（onSwitchMode がある場合） */}
         {onSwitchMode ? (
           <div className="flex items-center gap-3">
             <div className="flex gap-1">
@@ -704,6 +711,13 @@ export default function ImageCropModal({
               >
                 切り抜き
               </button>
+              <button
+                className="px-3 py-1.5 text-sm rounded transition-colors
+                           text-gray-400 hover:text-white hover:bg-white/10"
+                onClick={() => onSwitchMode("memo")}
+              >
+                メモ
+              </button>
             </div>
             <span className="text-gray-400 text-xs">ドラッグで範囲を選択</span>
           </div>
@@ -719,9 +733,9 @@ export default function ImageCropModal({
           <button
             className="px-4 py-1.5 text-sm text-gray-300 hover:text-white
                        rounded transition-colors"
-            onClick={onCancel}
+            onClick={() => onCancel()}
           >
-            キャンセル
+            戻る
           </button>
           <button
             className="px-4 py-1.5 text-sm bg-blue-500 text-white

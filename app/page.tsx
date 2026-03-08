@@ -170,12 +170,14 @@ export default function HomePage() {
 
   /**
    * ペーストで新規メモが作成された時のハンドラ
-   * PasteHandler から呼ばれ、一覧を更新してモーダルを開く
+   * PasteHandler から呼ばれ、一覧を更新する。
+   * モーダルは開かず、カードだけグリッドに追加する。
+   * ユーザーはペタペタ貼り付けた後、カードをクリックして編集する。
    */
   const handleNotePasted = useCallback(
     (note: LocalNote) => {
+      void note; // 将来の拡張用（トースト通知等）
       reloadNotes();
-      setEditingNote(note);
     },
     [reloadNotes]
   );

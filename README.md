@@ -5,6 +5,7 @@ Google Keep 風のメモアプリ。「貼り付けファースト」の設計�
 ## 特徴
 
 - **貼り付けファースト** - ページがアクティブなら Ctrl+V で即座にメモ作成
+- **ファイルドロップ** - 画像ファイルをブラウザにドラッグ&ドロップでメモ作成（複数ファイル同時対応）
 - **画像切り抜き** - Canvas ベースの矩形選択で画像をトリミング
 - **マーカー描画** - 画像上にフリーハンドで半透明マーカーを描画（蛍光ペン風、フィット拡大表示）
 - **矢印・丸ツール** - 指示書作成に便利な矢印と丸（楕円）をドラッグで配置（色・太さ・透明度対応）
@@ -49,7 +50,7 @@ clipped/
 │   ├── NoteGrid.tsx        # Masonry グリッド + DnD
 │   ├── NoteCard.tsx        # 個別メモカード
 │   ├── NoteModal.tsx       # メモ編集モーダル（自動保存）
-│   ├── PasteHandler.tsx    # グローバルペースト処理
+│   ├── PasteHandler.tsx    # グローバルペースト + ファイルドロップ処理
 │   ├── SyncButton.tsx      # サーバー同期ボタン
 │   ├── ImageCropModal.tsx  # Canvas 矩形選択による画像切り抜き
 │   ├── ImageAnnotation.tsx # Canvas マーカー描画
@@ -134,6 +135,7 @@ Apache reverse proxy 経由で `ribbon-re.jp/clipped` でアクセスされる�
 - [x] UI改善: 画像編集 2クリック化（タブ切り替え）、Canvas フィット拡大表示
 - [x] 描画ツール拡張: 矢印ツール、丸（楕円）ツール追加
 - [x] REST API: PixDraft 連携（クリップ一覧/詳細/画像DL/同期、Bearer 認証）
+- [x] ファイルドロップ: 画像ドラッグ&ドロップでメモ作成
 - [ ] Phase 7: Google OAuth 認証
 - [ ] Phase 8: PostgreSQL + Prisma（API ストレージを JSON → DB に移行）
 - [ ] Phase 9: API 拡張（署名付き URL、サムネイルリサイズ、Webhook）

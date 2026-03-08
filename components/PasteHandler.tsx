@@ -18,7 +18,8 @@ type PasteHandlerProps = {
 /**
  * PasteHandler コンポーネント
  *
- * window レベルで paste イベントをリッスンし、Ctrl+V で即座にメモを作成する。
+ * window レベルで paste イベントおよび dragover/drop イベントをリッスンし、
+ * Ctrl+V またはファイルドロップで即座にメモを作成する。
  * Clipped のコア機能。ページが最前面でアクティブであれば、要素のフォーカスなしで
  * ペーストイベントに反応する。
  *
@@ -26,9 +27,15 @@ type PasteHandlerProps = {
  * - 画像（スクリーンショット等）: canvas でリサイズ → base64 → 新規メモ
  * - テキスト: プレーンテキストとして新規メモの本文に設定
  * - HTML: プレーンテキストにフォールバック
+ * - ファイルドロップ: 画像ファイルのみ対応、1ファイル = 1メモ
  *
  * モーダルが開いている場合はスキップし、モーダル内のペースト処理に委譲する。
  * UI を持たない透過的なコンポーネント（null をレンダリング）。
+ *
+ * @dnd-kit との競合について:
+ * @dnd-kit は PointerEvent ベースで動作するため、HTML5 の dragover/drop
+ * イベントとは競合しない。ファイルドロップは e.dataTransfer.types に "Files"
+ * が含まれることで判別可能。
  */
 export default function PasteHandler({ isModalOpen, onNotePasted }: PasteHandlerProps) {
   useEffect(() => {
@@ -103,8 +110,78 @@ export default function PasteHandler({ isModalOpen, onNotePasted }: PasteHandler
       }
     };
 
+    /**
+     * ドラッグオーバーイベントハンドラ
+     *
+     * ブラウザのデフォルト動作（ファイルを新しいタブで開く）を抑止し、
+     * コピーカーソルを表示する。これがないと drop イベントが発火しない。
+     */
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = "copy";
+      }
+    };
+
+    /**
+     * ファイルドロップイベントハンドラ
+     *
+     * 処理フロー:
+     * 1. ブラウザのデフォルト動作を抑止
+     * 2. モーダルが開いていればスキップ（モーダル操作を邪魔しない）
+     * 3. ドロップされたファイルから画像のみフィルタ
+     * 4. 各画像を resizeToDataUrl でリサイズ → base64 変換
+     * 5. 1ファイル = 1メモとして createNote で作成
+     * 6. onNotePasted で親に通知（グリッドに追加）
+     *
+     * 画像以外のファイル（PDF、Excel 等）は無視する。
+     * 将来 Phase 8（PostgreSQL）導入後にサーバーサイド保存で対応予定。
+     */
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+
+      // モーダルが開いている場合はドロップをスキップ
+      if (isModalOpen) return;
+
+      // ドロップされたファイル一覧を取得
+      const files = Array.from(e.dataTransfer?.files ?? []);
+
+      // 画像ファイルのみフィルタ（image/png, image/jpeg, image/gif 等）
+      const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+
+      // 画像ファイルがなければ何もしない
+      if (imageFiles.length === 0) return;
+
+      // 各画像ファイルを順番に処理（1ファイル = 1メモ）
+      for (const file of imageFiles) {
+        try {
+          /** canvas でリサイズして base64 に変換（最大 800px） */
+          const localImage = await resizeToDataUrl(file, 800);
+
+          /** 画像付きの新規メモを作成 */
+          const note = createNote({
+            images: [localImage],
+          });
+
+          /** 初回ペースト日時を記録（ログイン誘導用） */
+          recordFirstPaste();
+
+          /** 親コンポーネントに通知（グリッドに追加） */
+          onNotePasted(note);
+        } catch (err) {
+          console.error("ファイルドロップの処理に失敗しました:", err);
+        }
+      }
+    };
+
     window.addEventListener("paste", handlePaste);
-    return () => window.removeEventListener("paste", handlePaste);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleDrop);
+    return () => {
+      window.removeEventListener("paste", handlePaste);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+    };
   }, [isModalOpen, onNotePasted]);
 
   // UI を持たないコンポーネント
