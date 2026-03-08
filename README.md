@@ -142,6 +142,15 @@ Apache reverse proxy 経由で `ribbon-re.jp/clipped` でアクセスされる�
 - [ ] Phase 10: データ移行（localStorage → DB）
 - [ ] Phase 11: 本番デプロイ最終調整
 
+## ドキュメント構成
+
+| ファイル | 内容 |
+|---------|------|
+| `CLAUDE.md` | プロジェクト概要・技術スタック・環境情報（Claude Code 用） |
+| `rules/devrelay.md` | DevRelay 共通ルール（コーディングスタイル、プランモード等） |
+| `rules/project.md` | プロジェクト固有の設計判断・ルール |
+| `doc/changelog.md` | 変更履歴 |
+
 ## ライセンス
 
 Private
