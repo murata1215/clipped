@@ -136,7 +136,7 @@ Apache reverse proxy 経由で `ribbon-re.jp/clipped` でアクセスされる�
 - [x] 描画ツール拡張: 矢印ツール、丸（楕円）ツール追加
 - [x] REST API: PixDraft 連携（クリップ一覧/詳細/画像DL/同期、Bearer 認証）
 - [x] ファイルドロップ: 画像ドラッグ&ドロップでメモ作成
-- [ ] Phase 7: Google OAuth 認証
+- [x] Phase 7: Google OAuth 認証（NextAuth v5 + JWT セッション）
 - [ ] Phase 8: PostgreSQL + Prisma（API ストレージを JSON → DB に移行）
 - [ ] Phase 9: API 拡張（署名付き URL、サムネイルリサイズ、Webhook）
 - [ ] Phase 10: データ移行（localStorage → DB）

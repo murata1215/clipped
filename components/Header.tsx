@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 /**
  * ヘッダーコンポーネントのプロパティ
@@ -14,13 +16,16 @@ type HeaderProps = {
  * ヘッダーコンポーネント
  *
  * アプリケーション上部に表示される共通ヘッダー。
- * ロゴ、検索バー、ログインボタンを含む。
+ * ロゴ、検索バー、認証ボタンを含む。
  * 未ログイン時は「Googleでログイン」ボタンを表示し、
- * ログイン済み時はアバターを表示する（Phase 7 で実装予定）。
+ * ログイン済み時はアバターとログアウトボタンを表示する。
  */
 export default function Header({ onSearch }: HeaderProps) {
   /** 検索入力フィールドの値 */
   const [searchQuery, setSearchQuery] = useState("");
+  /** NextAuth セッション情報 */
+  const { data: session, status } = useSession();
+  const router = useRouter();
 
   /**
    * 検索入力の変更ハンドラ
@@ -72,19 +77,50 @@ export default function Header({ onSearch }: HeaderProps) {
           </div>
         </div>
 
-        {/* ログインボタン（未ログイン時） */}
-        {/* TODO: Phase 7 でログイン状態に応じた表示切替を実装 */}
-        <button
-          className="shrink-0 px-4 py-2 text-sm font-medium text-blue-600
-                     border border-blue-200 rounded-lg
-                     hover:bg-blue-50 transition-colors"
-          onClick={() => {
-            // TODO: Phase 7 で signIn("google") を呼び出す
-            alert("ログイン機能は今後実装されます");
-          }}
-        >
-          Googleでログイン
-        </button>
+        {/* 認証セクション：セッション状態に応じて表示を切り替え */}
+        <div className="shrink-0">
+          {status === "loading" ? (
+            /* セッション読み込み中：スケルトン表示 */
+            <div className="w-20 h-9 bg-gray-100 rounded-lg animate-pulse" />
+          ) : session?.user ? (
+            /* ログイン済み：アバター + ユーザー名 + ログアウトボタン */
+            <div className="flex items-center gap-3">
+              {/* ユーザーアバター */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {session.user.image && (
+                <img
+                  src={session.user.image}
+                  alt={session.user.name || "ユーザー"}
+                  className="w-8 h-8 rounded-full border border-gray-200"
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              {/* ユーザー名（PC のみ表示） */}
+              <span className="hidden sm:block text-sm text-gray-600 max-w-[120px] truncate">
+                {session.user.name}
+              </span>
+              {/* ログアウトボタン */}
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="px-3 py-1.5 text-xs font-medium text-gray-500
+                           border border-gray-200 rounded-lg
+                           hover:bg-gray-50 transition-colors"
+              >
+                ログアウト
+              </button>
+            </div>
+          ) : (
+            /* 未ログイン：ログインボタン */
+            <button
+              className="px-4 py-2 text-sm font-medium text-blue-600
+                         border border-blue-200 rounded-lg
+                         hover:bg-blue-50 transition-colors"
+              onClick={() => router.push("/login")}
+            >
+              Googleでログイン
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

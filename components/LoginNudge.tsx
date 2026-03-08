@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import {
   FIRST_PASTE_KEY,
   NUDGE_DISMISSED_KEY,
@@ -28,6 +29,8 @@ type LoginNudgeProps = {
  * 3. 初回ペーストから3日後 → トースト表示
  */
 export default function LoginNudge({ onShowToast, noteCount }: LoginNudgeProps) {
+  /** NextAuth セッション情報（ログイン済みなら誘導不要） */
+  const { data: session } = useSession();
   /** バナー表示の可否 */
   const [showBanner, setShowBanner] = useState(false);
 
@@ -90,8 +93,8 @@ export default function LoginNudge({ onShowToast, noteCount }: LoginNudgeProps) 
     localStorage.setItem(NUDGE_DISMISSED_KEY, "true");
   };
 
-  // バナーが非表示なら何もレンダリングしない
-  if (!showBanner) return null;
+  // ログイン済み、またはバナーが非表示なら何もレンダリングしない
+  if (session || !showBanner) return null;
 
   return (
     <div className="bg-blue-50 border-b border-blue-100">

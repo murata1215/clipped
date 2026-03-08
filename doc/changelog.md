@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-03-09: Phase 7 — Google OAuth 認証
+
+### 概要
+NextAuth.js v5 + Google OAuth を導入。JWT セッション（DB なし）でログイン/ログアウト/セッション管理を実装。
+
+### 新規ファイル
+- `lib/auth.ts` — NextAuth v5 設定（Google プロバイダ、JWT コールバック）
+- `app/api/auth/[...nextauth]/route.ts` — NextAuth API ハンドラー
+- `components/AuthProvider.tsx` — SessionProvider ラッパー（Client Component）
+- `app/login/page.tsx` — カスタムログインページ（Google ログインボタン）
+
+### 更新ファイル
+- `app/layout.tsx` — AuthProvider で children をラップ
+- `components/Header.tsx` — useSession でログイン状態表示（アバター/ユーザー名/ログアウト）
+- `components/LoginNudge.tsx` — ログイン済みならバナー非表示
+- `package.json` — next-auth@5.0.0-beta.30 追加
+
+### 環境変数（.env.local に追加）
+- `AUTH_SECRET` — セッション暗号化キー
+- `AUTH_URL` — NextAuth ベース URL
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google OAuth 認証情報（既存）
+
 ## 2026-03-08: DevRelay Agreement v4 適用
 
 ### 概要

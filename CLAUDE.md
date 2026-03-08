@@ -12,6 +12,7 @@ See `rules/devrelay.md` for DevRelay rules.
 - **フレームワーク**: Next.js 14 (App Router) + TypeScript + Tailwind CSS
 - **DnD**: @dnd-kit/core（ドラッグ&ドロップ）
 - **ID生成**: @paralleldrive/cuid2
+- **認証**: NextAuth.js v5 + Google OAuth（JWT セッション）
 - **データ保存**: localStorage（Phase 8 以降で PostgreSQL + Prisma に移行予定）
 - **パッケージ管理**: pnpm（NVM 経由で利用）
 - **プロセス管理**: pm2
@@ -41,6 +42,10 @@ hooks/useMasonry.ts      - JS 計算 Masonry エンジン（absolute positioning
 lib/localStorage.ts      - LocalNote 型、CRUD、reorderNotes()
 lib/apiAuth.ts           - API キー認証ヘルパー（Bearer トークン検証）
 lib/serverStorage.ts     - サーバーサイドストレージ（JSON + 画像ファイル操作）
+lib/auth.ts              - NextAuth v5 設定（Google OAuth、JWT セッション）
+components/AuthProvider.tsx - SessionProvider ラッパー
+app/login/page.tsx       - カスタムログインページ
+app/api/auth/[...nextauth]/route.ts - NextAuth ハンドラー
 data/clips.json          - 同期されたクリップメタデータ（.gitignore 対象）
 data/photos/             - 同期された画像ファイル（.gitignore 対象）
 ```
@@ -74,7 +79,7 @@ data/photos/             - 同期された画像ファイル（.gitignore 対象
 - [x] 描画ツール拡張: 矢印ツール、丸（楕円）ツール追加（指示書作成対応）
 - [x] REST API: PixDraft 連携（クリップ一覧/詳細/画像DL/同期、Bearer 認証）
 - [x] ファイルドロップ: 画像ファイルをブラウザにドラッグ&ドロップでメモ作成
-- [ ] Phase 7: Google OAuth 認証
+- [x] Phase 7: Google OAuth 認証（NextAuth v5 + JWT セッション）
 - [ ] Phase 8: PostgreSQL + Prisma（API ストレージを JSON → DB に移行）
 - [ ] Phase 9: API 拡張（署名付き URL、サムネイルリサイズ、Webhook）
 - [ ] Phase 10: データ移行（localStorage → DB）
