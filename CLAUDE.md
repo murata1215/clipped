@@ -17,9 +17,8 @@ See `rules/devrelay.md` for DevRelay rules.
 - **プロセス管理**: pm2
 
 ### 環境情報
-- **ポート**: 3200
-- **公開 URL**: `ribbon-re.jp/clipped`（Apache reverse proxy 経由）
-- **basePath**: `/clipped`（next.config.mjs に設定済み）
+- **ポート**: 3006
+- **作業ディレクトリ**: `/opt/clipped`
 - **pnpm 実行方法**: `export NVM_DIR="/home/fwjg2507/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"` でパス設定後に使用
 - **pm2 再起動**: 上記 NVM 初期化後に `pm2 restart clipped`
 - **pm2 注意**: `node_modules/.bin/next` はシェルスクリプトのため `node_modules/next/dist/bin/next` を指定
