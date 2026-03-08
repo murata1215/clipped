@@ -9,9 +9,9 @@ module.exports = {
     // next.js の実際の JS エントリポイントを指定する
     script: 'node_modules/next/dist/bin/next',
     args: 'start',
-    cwd: '/var/www/html/clipped',
+    cwd: '/opt/clipped',
     env: {
-      PORT: 3200,
+      PORT: 3006,
       NODE_ENV: 'production'
     }
   }]
