@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { updateNote, type LocalNote, type LocalImage } from "@/lib/localStorage";
+import { updateNote as updateLocalNote, type LocalNote, type LocalImage, type UpdateNoteInput } from "@/lib/localStorage";
 import { resizeToDataUrl } from "@/lib/imageUtils";
 import ColorPicker from "./ColorPicker";
 import TagInput from "./TagInput";
@@ -16,6 +16,16 @@ type NoteModalProps = {
   note: LocalNote;
   /** モーダルを閉じる時のコールバック */
   onClose: () => void;
+  /** メモ保存関数（useNoteService から渡される、未指定時は localStorage） */
+  onSave?: (id: string, input: UpdateNoteInput) => Promise<LocalNote | null>;
+  /** 画像アップロード関数（サーバーモード時のみ） */
+  onUploadImage?: (noteId: string, file: File | Blob) => Promise<LocalImage>;
+  /** 画像削除関数（サーバーモード時のみ） */
+  onDeleteImage?: (noteId: string, imageId: string) => Promise<void>;
+  /** 画像差し替え関数（マーカー/切り抜き後、サーバーモード時のみ） */
+  onReplaceImage?: (noteId: string, oldImageId: string, newDataUrl: string) => Promise<LocalImage>;
+  /** サーバーモードかどうか */
+  isServerMode?: boolean;
 };
 
 /**
@@ -52,7 +62,15 @@ type ImageEditMode = null | "crop" | "annotate";
  * - モーダル内 Ctrl+V で画像追加
  * - Esc キーまたはオーバーレイクリックで閉じる
  */
-export default function NoteModal({ note, onClose }: NoteModalProps) {
+export default function NoteModal({
+  note,
+  onClose,
+  onSave,
+  onUploadImage,
+  onDeleteImage,
+  onReplaceImage,
+  isServerMode,
+}: NoteModalProps) {
   // ================================================================
   // ステート管理
   // ================================================================
@@ -74,35 +92,51 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
 
   /**
    * 画像編集モード（null: メモ編集 / "crop": 切り抜き / "annotate": マーカー）
-   * 画像付きメモの場合はマーカーモードで開始し、ペタペタ貼り付け後に
-   * カードクリックで直接画像編集に入れるようにする。
-   * 画像なしメモの場合は従来通りメモ編集画面（null）で開始。
    */
   const hasImages = note.images.length > 0;
   const [editMode, setEditMode] = useState<ImageEditMode>(
     hasImages ? "annotate" : null
   );
-  /** 編集対象の画像 ID（画像ありメモは1枚目をデフォルト選択） */
+  /** 編集対象の画像 ID */
   const [editingImageId, setEditingImageId] = useState<string | null>(
     hasImages ? note.images[0].id : null
   );
-  /** 保存エラーメッセージ（容量超過時に表示） */
+  /** 保存エラーメッセージ */
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // ================================================================
-  // 保存エラー通知のリスナー
+  // 保存ヘルパー
   // ================================================================
 
   /**
-   * localStorage 容量超過時のカスタムイベントをリッスンして、
-   * 画面上にエラーメッセージを表示する。
-   * 5秒後に自動的にメッセージを消す。
+   * メモを保存する統一関数
+   * onSave が渡されていれば API 経由、なければ localStorage に保存
    */
+  const saveNote = useCallback(
+    async (id: string, input: UpdateNoteInput) => {
+      if (onSave) {
+        try {
+          await onSave(id, input);
+        } catch (err) {
+          console.error("メモの保存に失敗:", err);
+          setSaveError("保存に失敗しました");
+          setTimeout(() => setSaveError(null), 5000);
+        }
+      } else {
+        updateLocalNote(id, input);
+      }
+    },
+    [onSave]
+  );
+
+  // ================================================================
+  // 保存エラー通知のリスナー（localStorage 容量超過用）
+  // ================================================================
+
   useEffect(() => {
     const handleSaveError = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       setSaveError(detail?.message || "保存に失敗しました");
-      // 5秒後にエラーメッセージを消す
       setTimeout(() => setSaveError(null), 5000);
     };
     window.addEventListener("clipped:save-error", handleSaveError);
@@ -115,27 +149,28 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
 
   /**
    * 自動保存を実行する
-   * debounce なしの即時保存。タイマーからの呼び出しとクローズ時の呼び出しで使用。
+   * サーバーモード時は画像を含めない（images は API 側で管理される）
    */
   const saveNow = useCallback(() => {
-    updateNote(note.id, { title, body, color, tags, images });
-  }, [note.id, title, body, color, tags, images]);
+    if (isServerMode) {
+      // サーバーモード: テキストフィールドのみ保存（画像は API で個別管理）
+      saveNote(note.id, { title, body, color, tags });
+    } else {
+      saveNote(note.id, { title, body, color, tags, images });
+    }
+  }, [note.id, title, body, color, tags, images, isServerMode, saveNote]);
 
   /**
-   * 変更があるたびに debounce タイマーをリセットして自動保存をスケジュールする。
-   * 1500ms 間操作がなければ保存が実行される。
+   * 変更があるたびに debounce タイマーをリセットして自動保存をスケジュールする
    */
   useEffect(() => {
-    // 前回のタイマーをクリア
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
-    // 1500ms 後に保存
     saveTimerRef.current = setTimeout(() => {
       saveNow();
     }, 1500);
 
-    // クリーンアップ: コンポーネントアンマウント時にタイマーをクリア
     return () => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
@@ -147,10 +182,6 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
   // キーボードイベント
   // ================================================================
 
-  /**
-   * Esc キーでモーダルを閉じる
-   * 画像編集モード中でも一覧に直帰する（保存して閉じる）。
-   */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -166,10 +197,6 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
   // モーダル内ペースト処理
   // ================================================================
 
-  /**
-   * モーダル内での Ctrl+V で画像を追加する
-   * テキスト入力欄へのペーストは通常通り動作する（画像ペースト時のみ介入）
-   */
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
       const items = Array.from(e.clipboardData?.items ?? []);
@@ -181,13 +208,19 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
         if (!blob) return;
 
         try {
-          const localImage = await resizeToDataUrl(blob, 800);
-          setImages((prev) => [...prev, localImage]);
+          if (isServerMode && onUploadImage) {
+            // サーバーモード: API にアップロード
+            const newImage = await onUploadImage(note.id, blob);
+            setImages((prev) => [...prev, newImage]);
+          } else {
+            // ローカルモード: リサイズして base64
+            const localImage = await resizeToDataUrl(blob, 800);
+            setImages((prev) => [...prev, localImage]);
+          }
         } catch (err) {
           console.error("モーダル内画像ペーストに失敗:", err);
         }
       }
-      // テキストペーストは textarea のデフォルト動作に任せる
     };
 
     const modal = modalRef.current;
@@ -195,7 +228,8 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
       modal.addEventListener("paste", handlePaste);
       return () => modal.removeEventListener("paste", handlePaste);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isServerMode, onUploadImage, note.id]);
 
   // ================================================================
   // ハンドラ
@@ -203,29 +237,35 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
 
   /**
    * モーダルを閉じる
-   * 閉じる前に未保存の変更を即座に保存する。
    */
   const handleClose = () => {
-    // 保留中のタイマーをクリアして即座に保存
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
-    updateNote(note.id, { title, body, color, tags, images });
+    if (isServerMode) {
+      saveNote(note.id, { title, body, color, tags });
+    } else {
+      saveNote(note.id, { title, body, color, tags, images });
+    }
     onClose();
   };
 
   /**
    * 画像を削除する
-   * @param imageId - 削除する画像の ID
    */
-  const handleRemoveImage = (imageId: string) => {
+  const handleRemoveImage = async (imageId: string) => {
+    if (isServerMode && onDeleteImage) {
+      try {
+        await onDeleteImage(note.id, imageId);
+      } catch (err) {
+        console.error("画像の削除に失敗:", err);
+      }
+    }
     setImages((prev) => prev.filter((img) => img.id !== imageId));
   };
 
   /**
    * 画像編集モードを開始する
-   * @param imageId - 編集対象の画像 ID
-   * @param mode - 編集モード（"crop" or "annotate"）
    */
   const handleStartImageEdit = (imageId: string, mode: "crop" | "annotate") => {
     setEditingImageId(imageId);
@@ -234,100 +274,123 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
 
   /**
    * 画像切り抜き完了ハンドラ
-   * 切り抜き後の DataURL で画像データを更新する
-   * @param croppedDataUrl - 切り抜き後の base64 DataURL
    */
   const handleCropComplete = useCallback(
-    (croppedDataUrl: string) => {
+    async (croppedDataUrl: string) => {
       if (!editingImageId) return;
-      setImages((prev) =>
-        prev.map((img) =>
-          img.id === editingImageId
-            ? { ...img, dataUrl: croppedDataUrl }
-            : img
-        )
-      );
+
+      if (isServerMode && onReplaceImage) {
+        // サーバーモード: 切り抜き結果をアップロードして旧画像を差し替え
+        try {
+          const newImage = await onReplaceImage(note.id, editingImageId, croppedDataUrl);
+          setImages((prev) =>
+            prev.map((img) =>
+              img.id === editingImageId ? newImage : img
+            )
+          );
+        } catch (err) {
+          console.error("切り抜き画像の保存に失敗:", err);
+        }
+      } else {
+        // ローカルモード: dataUrl を直接更新
+        setImages((prev) =>
+          prev.map((img) =>
+            img.id === editingImageId
+              ? { ...img, dataUrl: croppedDataUrl }
+              : img
+          )
+        );
+      }
       setEditMode(null);
       setEditingImageId(null);
     },
-    [editingImageId]
+    [editingImageId, isServerMode, onReplaceImage, note.id]
   );
 
   /**
    * 画像編集からの「戻る」ハンドラ
    *
-   * マーカー画面の「戻る」ボタンや黒背景クリック時に呼ばれる。
    * ImageAnnotation から描画後の DataURL が引数として渡される。
-   *
-   * 【重要】React の setImages は非同期バッチ処理のため、
-   * onSave(dataUrl) → setImages → onCancel() → updateNote(images)
-   * の順では images が古いクロージャ値になり描画が保存されない。
-   * そのため DataURL を引数で直接受け取り、ローカル変数 finalImages を
-   * 同期的に構築してから updateNote に渡す方式にしている。
-   *
-   * @param annotatedDataUrl - マーカー描画後の Canvas DataURL（省略時は画像更新なし）
+   * React の setImages は非同期バッチ処理のため、DataURL を引数で直接受け取り
+   * ローカル変数 finalImages を同期的に構築してから保存する。
    */
-  const handleEditCancel = useCallback((annotatedDataUrl?: string) => {
-    // 保留中の自動保存タイマーをクリアして即座に保存
+  const handleEditCancel = useCallback(async (annotatedDataUrl?: string) => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
 
-    // 描画後 DataURL が渡された場合、images を同期的に更新
     let finalImages = images;
     if (annotatedDataUrl && editingImageId) {
-      finalImages = images.map((img) =>
-        img.id === editingImageId
-          ? { ...img, dataUrl: annotatedDataUrl }
-          : img
-      );
-      // React state も更新（画面表示の整合性のため）
-      setImages(finalImages);
-    }
-
-    // 同期的に構築した finalImages で localStorage に保存
-    updateNote(note.id, { title, body, color, tags, images: finalImages });
-    onClose();
-  }, [note.id, title, body, color, tags, images, editingImageId, onClose]);
-
-  /**
-   * 画像編集モード切り替えハンドラ
-   *
-   * タブ UI からの呼び出しで、マーカー ⇔ 切り抜き ⇔ メモ を切り替える。
-   * "memo" が指定された場合は画像編集を終了してメモ編集画面に戻る。
-   * editingImageId は維持したまま editMode のみ変更する。
-   *
-   * ImageAnnotation からの呼び出し時は annotatedDataUrl が渡されるため、
-   * タブ切り替え前に描画データを images に同期反映する。
-   *
-   * @param mode - 切り替え先のモード
-   * @param annotatedDataUrl - マーカー描画後の Canvas DataURL（マーカータブからの切り替え時）
-   */
-  const handleSwitchEditMode = useCallback((mode: "crop" | "annotate" | "memo", annotatedDataUrl?: string) => {
-    // 描画後 DataURL が渡された場合、images を同期的に更新
-    if (annotatedDataUrl && editingImageId) {
-      setImages((prev) =>
-        prev.map((img) =>
+      if (isServerMode && onReplaceImage) {
+        // サーバーモード: 描画結果をアップロードして旧画像を差し替え
+        try {
+          const newImage = await onReplaceImage(note.id, editingImageId, annotatedDataUrl);
+          finalImages = images.map((img) =>
+            img.id === editingImageId ? newImage : img
+          );
+          setImages(finalImages);
+        } catch (err) {
+          console.error("マーカー画像の保存に失敗:", err);
+        }
+      } else {
+        // ローカルモード: dataUrl を直接更新
+        finalImages = images.map((img) =>
           img.id === editingImageId
             ? { ...img, dataUrl: annotatedDataUrl }
             : img
-        )
-      );
+        );
+        setImages(finalImages);
+      }
+    }
+
+    // 保存して閉じる
+    if (isServerMode) {
+      saveNote(note.id, { title, body, color, tags });
+    } else {
+      saveNote(note.id, { title, body, color, tags, images: finalImages });
+    }
+    onClose();
+  }, [note.id, title, body, color, tags, images, editingImageId, onClose, isServerMode, onReplaceImage, saveNote]);
+
+  /**
+   * 画像編集モード切り替えハンドラ
+   */
+  const handleSwitchEditMode = useCallback((mode: "crop" | "annotate" | "memo", annotatedDataUrl?: string) => {
+    if (annotatedDataUrl && editingImageId) {
+      if (isServerMode && onReplaceImage) {
+        // サーバーモード: 描画結果をアップロード（非同期だがUIは切り替えを先に進める）
+        onReplaceImage(note.id, editingImageId, annotatedDataUrl).then((newImage) => {
+          setImages((prev) =>
+            prev.map((img) =>
+              img.id === editingImageId ? newImage : img
+            )
+          );
+        }).catch((err) => {
+          console.error("画像差し替えに失敗:", err);
+        });
+      } else {
+        setImages((prev) =>
+          prev.map((img) =>
+            img.id === editingImageId
+              ? { ...img, dataUrl: annotatedDataUrl }
+              : img
+          )
+        );
+      }
     }
 
     if (mode === "memo") {
-      // メモ編集画面に切り替え（画像編集を終了）
       setEditMode(null);
       setEditingImageId(null);
     } else {
       setEditMode(mode);
     }
-  }, [editingImageId]);
+  }, [editingImageId, isServerMode, onReplaceImage, note.id]);
 
   /** モーダルの背景色クラス */
   const bgColor = colorBgMap[color] || colorBgMap.default;
 
-  /** 現在編集中の画像データ（切り抜き / マーカー モーダル表示用） */
+  /** 現在編集中の画像データ */
   const editingImage = editingImageId
     ? images.find((img) => img.id === editingImageId)
     : null;
@@ -348,7 +411,7 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
                       max-h-[85vh] flex flex-col transition-colors`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* 保存エラー通知（localStorage 容量超過時） */}
+          {/* 保存エラー通知 */}
           {saveError && (
             <div className="mx-4 mt-3 px-3 py-2 bg-red-100 border border-red-300
                             text-red-700 text-xs rounded-lg flex items-center gap-2">
@@ -360,7 +423,7 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
             </div>
           )}
 
-          {/* 画像サムネイル一覧（クリックで直接マーカー編集を開く） */}
+          {/* 画像サムネイル一覧 */}
           {images.length > 0 && (
             <div className="flex flex-wrap gap-2 p-4 pb-0">
               {images.map((img) => (
@@ -374,7 +437,7 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
                     onClick={() => handleStartImageEdit(img.id, "annotate")}
                   />
 
-                  {/* 画像削除ボタン（右上の×） */}
+                  {/* 画像削除ボタン */}
                   <button
                     className="absolute -top-1 -right-1 w-5 h-5 bg-gray-700 text-white
                                rounded-full flex items-center justify-center text-xs
@@ -390,9 +453,8 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
             </div>
           )}
 
-          {/* 編集エリア（スクロール対応） */}
+          {/* 編集エリア */}
           <div className="flex-1 overflow-y-auto p-4">
-            {/* タイトル入力欄 */}
             <input
               type="text"
               value={title}
@@ -402,7 +464,6 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
                          outline-none bg-transparent mb-3"
             />
 
-            {/* 本文入力欄（自動拡張） */}
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
@@ -421,7 +482,7 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
             </div>
           </div>
 
-          {/* フッター: カラーピッカー + 閉じるボタン */}
+          {/* フッター */}
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200/50">
             <ColorPicker value={color} onChange={setColor} />
             <button
@@ -435,7 +496,7 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
         </div>
       </div>
 
-      {/* 画像切り抜きモーダル（z-60 で NoteModal の上に表示、タブ切り替え対応） */}
+      {/* 画像切り抜きモーダル */}
       {editMode === "crop" && editingImage && (
         <ImageCropModal
           imageSrc={editingImage.dataUrl}
@@ -446,7 +507,7 @@ export default function NoteModal({ note, onClose }: NoteModalProps) {
         />
       )}
 
-      {/* 画像マーカーモーダル（z-60 で NoteModal の上に表示、タブ切り替え対応） */}
+      {/* 画像マーカーモーダル */}
       {editMode === "annotate" && editingImage && (
         <ImageAnnotation
           imageSrc={editingImage.dataUrl}

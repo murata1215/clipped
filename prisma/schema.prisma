@@ -1,0 +1,129 @@
+// Prisma スキーマ定義
+// Phase 8: PostgreSQL データベーススキーマ
+//
+// NextAuth.js v5 の Prisma Adapter が必要とするテーブル（User, Account）と、
+// Clipped 固有のテーブル（Note, Image, Tag, NoteTag）を定義する。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// NextAuth.js 用テーブル
+// ============================================================
+
+/// ユーザーテーブル（NextAuth Prisma Adapter 準拠）
+/// Google OAuth でログインしたユーザーの情報を保持する。
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  notes    Note[]
+
+  @@map("users")
+}
+
+/// OAuth アカウントテーブル（NextAuth Prisma Adapter 準拠）
+/// Google 等の外部プロバイダとの連携情報を保持する。
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// ============================================================
+// Clipped 固有テーブル
+// ============================================================
+
+/// メモテーブル
+/// ユーザーが作成したメモ（テキスト + 画像 + タグ）を保持する。
+/// 楽観ロック用の version フィールドと論理削除用の deleted フィールドを持つ。
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String   @default("")
+  body      String   @default("") @db.Text
+  color     String   @default("default")
+  pinned    Boolean  @default(false)
+  order     Int      @default(0)
+  version   Int      @default(1)
+  deleted   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  images   Image[]
+  noteTags NoteTag[]
+
+  @@index([userId, deleted])
+  @@index([userId, pinned, order])
+  @@map("notes")
+}
+
+/// 画像テーブル
+/// メモに添付された画像のメタデータを保持する。
+/// 実際の画像ファイルは data/photos/ ディレクトリに保存される（Phase 9 で署名付き URL に移行予定）。
+model Image {
+  id       String  @id @default(cuid())
+  noteId   String
+  filename String
+  mimeType String
+  width    Int?
+  height   Int?
+  order    Int     @default(0)
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@map("images")
+}
+
+/// タグテーブル
+/// メモに付与できるタグのマスターデータ。
+/// 同じタグ名の重複を防ぐためユニーク制約を設定。
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+
+  noteTags NoteTag[]
+
+  @@map("tags")
+}
+
+/// メモ-タグ中間テーブル
+/// メモとタグの多対多リレーションを管理する。
+model NoteTag {
+  noteId String
+  tagId  String
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+  @@map("note_tags")
+}

@@ -21,15 +21,8 @@ const NoteGrid = dynamic(() => import("@/components/NoteGrid"), { ssr: false });
 const NoteModal = dynamic(() => import("@/components/NoteModal"), { ssr: false });
 import LoginNudge from "@/components/LoginNudge";
 import Toast, { type ToastMessage } from "@/components/Toast";
-import {
-  LocalNote,
-  getNotes,
-  createNote,
-  updateNote,
-  deleteNote,
-  searchNotes,
-  reorderNotes,
-} from "@/lib/localStorage";
+import { useNoteService } from "@/lib/noteService";
+import type { LocalNote } from "@/lib/localStorage";
 import { createId } from "@paralleldrive/cuid2";
 
 /**
@@ -44,16 +37,20 @@ import { createId } from "@paralleldrive/cuid2";
  * - ログイン誘導（LoginNudge）
  * - トースト通知（Toast）
  *
- * 未ログイン時は localStorage のデータを表示。
- * TODO: ログイン済み時はサーバー API からデータを取得（Phase 8）。
+ * ログイン済みの場合は /api/notes（PostgreSQL）を使用し、
+ * 未ログインの場合は localStorage を使用する。
+ * useNoteService() hook がデータソースを自動切り替えする。
  */
 export default function HomePage() {
+  // ================================================================
+  // データサービス（localStorage / API 自動切り替え）
+  // ================================================================
+  const svc = useNoteService();
+
   // ================================================================
   // ステート管理
   // ================================================================
 
-  /** メモ一覧の状態管理 */
-  const [notes, setNotes] = useState<LocalNote[]>([]);
   /** 現在の検索クエリ */
   const [searchQuery, setSearchQuery] = useState("");
   /** 編集中のメモ（モーダル表示用、null ならモーダルは閉じている） */
@@ -70,12 +67,8 @@ export default function HomePage() {
    * 検索クエリがある場合は検索結果を、なければ全件を取得
    */
   const reloadNotes = useCallback(() => {
-    if (searchQuery.trim()) {
-      setNotes(searchNotes(searchQuery));
-    } else {
-      setNotes(getNotes());
-    }
-  }, [searchQuery]);
+    svc.reloadNotes(searchQuery.trim() || undefined);
+  }, [svc.reloadNotes, searchQuery]);
 
   /**
    * 初回マウント時にメモを読み込む
@@ -123,14 +116,13 @@ export default function HomePage() {
 
   /**
    * 新規メモ作成ハンドラ
-   * NewNoteInput から呼ばれ、localStorage にメモを追加後に一覧を更新
+   * NewNoteInput から呼ばれ、メモを追加後に一覧を更新
    */
   const handleCreate = useCallback(
-    (data: { title: string; body: string }) => {
-      createNote({ title: data.title, body: data.body });
-      reloadNotes();
+    async (data: { title: string; body: string }) => {
+      await svc.createNote({ title: data.title, body: data.body });
     },
-    [reloadNotes]
+    [svc.createNote]
   );
 
   /**
@@ -146,41 +138,32 @@ export default function HomePage() {
    * メモのピン留め状態を反転させて一覧を更新
    */
   const handleTogglePin = useCallback(
-    (id: string) => {
-      const note = notes.find((n) => n.id === id);
+    async (id: string) => {
+      const note = svc.notes.find((n) => n.id === id);
       if (note) {
-        updateNote(id, { pinned: !note.pinned });
-        reloadNotes();
+        await svc.updateNote(id, { pinned: !note.pinned });
       }
     },
-    [notes, reloadNotes]
+    [svc.notes, svc.updateNote]
   );
 
   /**
    * メモ削除ハンドラ
-   * localStorage からメモを物理削除して一覧を更新
    */
   const handleDelete = useCallback(
-    (id: string) => {
-      deleteNote(id);
-      reloadNotes();
+    async (id: string) => {
+      await svc.deleteNote(id);
     },
-    [reloadNotes]
+    [svc.deleteNote]
   );
 
   /**
    * ペーストで新規メモが作成された時のハンドラ
-   * PasteHandler から呼ばれ、一覧を更新する。
-   * モーダルは開かず、カードだけグリッドに追加する。
-   * ユーザーはペタペタ貼り付けた後、カードをクリックして編集する。
+   * PasteHandler から呼ばれる。svc 内部で notes state は更新済み。
    */
-  const handleNotePasted = useCallback(
-    (note: LocalNote) => {
-      void note; // 将来の拡張用（トースト通知等）
-      reloadNotes();
-    },
-    [reloadNotes]
-  );
+  const handleNotePasted = useCallback(() => {
+    // svc.createNote 内で setNotes 済みなので追加操作は不要
+  }, []);
 
   /**
    * モーダルを閉じるハンドラ
@@ -193,16 +176,14 @@ export default function HomePage() {
 
   /**
    * メモ並び替えハンドラ
-   * ドラッグ&ドロップの結果を受けて、localStorage の order を更新し
-   * メモ一覧を再読み込みする
+   * ドラッグ&ドロップの結果を受けて order を更新する
    * @param orderedIds - 新しい並び順の ID 配列
    */
   const handleReorder = useCallback(
-    (orderedIds: string[]) => {
-      reorderNotes(orderedIds);
-      reloadNotes();
+    async (orderedIds: string[]) => {
+      await svc.reorderNotes(orderedIds);
     },
-    [reloadNotes]
+    [svc.reorderNotes]
   );
 
   // ================================================================
@@ -216,26 +197,35 @@ export default function HomePage() {
         <PasteHandler
           isModalOpen={editingNote !== null}
           onNotePasted={handleNotePasted}
+          onCreateNote={svc.createNote}
+          onUploadImage={svc.isServerMode ? svc.uploadImage : undefined}
+          isServerMode={svc.isServerMode}
         />
 
         {/* ヘッダー（検索バー + ログインボタン） */}
         <Header onSearch={handleSearch} />
 
         {/* ログイン誘導バナー（メモ5件超で表示） */}
-        <LoginNudge onShowToast={showToast} noteCount={notes.length} />
+        <LoginNudge onShowToast={showToast} noteCount={svc.notes.length} />
 
         {/* 新規メモ作成エリア */}
         <NewNoteInput onCreate={handleCreate} />
 
         {/* メモ一覧グリッド */}
         <main className="max-w-7xl mx-auto">
-          <NoteGrid
-            notes={notes}
-            onNoteClick={handleNoteClick}
-            onTogglePin={handleTogglePin}
-            onDelete={handleDelete}
-            onReorder={handleReorder}
-          />
+          {svc.loading ? (
+            <div className="flex justify-center py-12">
+              <div className="text-gray-400 text-sm">読み込み中...</div>
+            </div>
+          ) : (
+            <NoteGrid
+              notes={svc.notes}
+              onNoteClick={handleNoteClick}
+              onTogglePin={handleTogglePin}
+              onDelete={handleDelete}
+              onReorder={handleReorder}
+            />
+          )}
         </main>
 
         {/* モーダルエディタ */}
@@ -243,11 +233,16 @@ export default function HomePage() {
           <NoteModal
             note={editingNote}
             onClose={handleModalClose}
+            onSave={svc.updateNote}
+            onUploadImage={svc.isServerMode ? svc.uploadImage : undefined}
+            onDeleteImage={svc.isServerMode ? svc.deleteImage : undefined}
+            onReplaceImage={svc.isServerMode ? svc.replaceImage : undefined}
+            isServerMode={svc.isServerMode}
           />
         )}
 
-        {/* サーバー同期ボタン（右下フローティング） */}
-        <SyncButton onShowToast={showToast} />
+        {/* サーバー同期ボタン（未ログイン時のみ表示） */}
+        {!svc.isServerMode && <SyncButton onShowToast={showToast} />}
 
         {/* トースト通知 */}
         <Toast toasts={toasts} onDismiss={dismissToast} />
