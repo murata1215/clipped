@@ -16,6 +16,8 @@ Google Keep 風のメモアプリ。「貼り付けファースト」の設計�
 - **キーボードショートカット** - Ctrl+Z（アンドゥ）、Ctrl+C（クリップボードコピー）
 - **REST API** - 外部サービス連携用 API（クリップ一覧/詳細/画像DL、Bearer 認証）
 - **サーバー同期** - localStorage データをサーバーに手動同期（API 経由で外部アクセス可能に）
+- **PostgreSQL + Prisma** - ログインユーザーはサーバーサイド DB にメモ・画像を保存
+- **デュアルストレージ** - ログイン時は DB、未ログイン時は localStorage を自動切り替え
 
 ## 技術スタック
 
@@ -26,7 +28,8 @@ Google Keep 風のメモアプリ。「貼り付けファースト」の設計�
 | スタイリング | Tailwind CSS |
 | ドラッグ&ドロップ | @dnd-kit/core |
 | ID 生成 | @paralleldrive/cuid2 |
-| データ保存 | localStorage（現在） |
+| データ保存 | PostgreSQL + Prisma（ログイン時） / localStorage（未ログイン時） |
+| ORM | Prisma |
 | プロセス管理 | pm2 |
 | パッケージ管理 | pnpm |
 
@@ -67,10 +70,15 @@ clipped/
 │   ├── apiAuth.ts          # API キー認証
 │   ├── serverStorage.ts    # サーバーサイドストレージ
 │   ├── imageUtils.ts       # 画像リサイズユーティリティ
-│   └── cropUtils.ts        # 画像切り抜きユーティリティ
+│   ├── cropUtils.ts        # 画像切り抜きユーティリティ
+│   ├── prisma.ts           # Prisma クライアントシングルトン
+│   ├── noteService.ts      # サーバーサイド CRUD サービス
+│   ├── noteApiClient.ts    # フロントエンド API クライアント
+│   └── imageStorage.ts     # 画像ファイル保存/削除/パス取得
+├── prisma/
+│   └── schema.prisma       # DB スキーマ定義
 ├── data/                   # 同期データ（.gitignore 対象）
-│   ├── clips.json          # クリップメタデータ
-│   └── photos/             # 画像ファイル
+│   └── photos/{userId}/{YYYYMMDD}/ # 画像ファイル
 ├── docs/
 │   └── Clipped_仕様書.md   # 仕様書
 └── ecosystem.config.js     # pm2 設定
@@ -93,7 +101,7 @@ pnpm install
 
 ```bash
 pnpm dev
-# http://localhost:3200 でアクセス
+# http://localhost:3006 でアクセス
 ```
 
 ### 本番ビルド
@@ -119,12 +127,18 @@ pm2 logs clipped
 cp .env.local.example .env.local
 ```
 
+主要な環境変数:
+- `DATABASE_URL` — PostgreSQL 接続文字列
+- `AUTH_SECRET` — NextAuth セッション暗号化キー
+- `AUTH_URL` — NextAuth ベース URL
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google OAuth 認証情報
+- `CLIPPED_API_KEY` — 外部 API 認証用キー
+
 ## デプロイ
 
 Apache reverse proxy 経由で `ribbon-re.jp/clipped` でアクセスされる構成です。
 
-- `basePath: "/clipped"` が next.config.mjs に設定済み
-- ポート 3200 で動作
+- ポート 3006 で動作
 - pm2 で管理
 
 ## ロードマップ
@@ -137,9 +151,7 @@ Apache reverse proxy 経由で `ribbon-re.jp/clipped` でアクセスされる�
 - [x] REST API: PixDraft 連携（クリップ一覧/詳細/画像DL/同期、Bearer 認証）
 - [x] ファイルドロップ: 画像ドラッグ&ドロップでメモ作成
 - [x] Phase 7: Google OAuth 認証（NextAuth v5 + JWT セッション）
-- [ ] Phase 8: PostgreSQL + Prisma（API ストレージを JSON → DB に移行）
-- [ ] Phase 9: API 拡張（署名付き URL、サムネイルリサイズ、Webhook）
-- [ ] Phase 10: データ移行（localStorage → DB）
+- [x] Phase 8-10: PostgreSQL + Prisma 移行、画像API、フロントAPI切り替え
 - [ ] Phase 11: 本番デプロイ最終調整
 
 ## ドキュメント構成

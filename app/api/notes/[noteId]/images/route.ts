@@ -103,7 +103,7 @@ export async function POST(
     const file = files[i];
 
     try {
-      const info = await saveImageFile(file);
+      const info = await saveImageFile(file, session.user.id);
 
       // DB に Image レコードを作成
       const image = await prisma.image.create({

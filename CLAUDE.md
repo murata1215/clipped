@@ -13,7 +13,7 @@ See `rules/devrelay.md` for DevRelay rules.
 - **DnD**: @dnd-kit/core（ドラッグ&ドロップ）
 - **ID生成**: @paralleldrive/cuid2
 - **認証**: NextAuth.js v5 + Google OAuth（JWT セッション）
-- **データ保存**: localStorage（Phase 8 以降で PostgreSQL + Prisma に移行予定）
+- **データ保存**: PostgreSQL + Prisma（ログインユーザー） / localStorage（未ログイン）
 - **パッケージ管理**: pnpm（NVM 経由で利用）
 - **プロセス管理**: pm2
 
@@ -42,12 +42,19 @@ hooks/useMasonry.ts      - JS 計算 Masonry エンジン（absolute positioning
 lib/localStorage.ts      - LocalNote 型、CRUD、reorderNotes()
 lib/apiAuth.ts           - API キー認証ヘルパー（Bearer トークン検証）
 lib/serverStorage.ts     - サーバーサイドストレージ（JSON + 画像ファイル操作）
-lib/auth.ts              - NextAuth v5 設定（Google OAuth、JWT セッション）
+lib/auth.ts              - NextAuth v5 設定（Google OAuth、JWT、Prisma Adapter）
+lib/prisma.ts            - Prisma クライアントシングルトン
+lib/noteService.ts       - サーバーサイド CRUD サービス（Prisma 経由）
+lib/noteApiClient.ts     - フロントエンド API クライアント
+lib/imageStorage.ts      - 画像ファイル保存/削除/パス取得
+app/api/notes/route.ts           - メモ一覧/作成 API
+app/api/notes/[noteId]/route.ts  - メモ詳細/更新/削除 API
+app/api/notes/[noteId]/images/   - 画像アップロード/取得/削除 API
 components/AuthProvider.tsx - SessionProvider ラッパー
 app/login/page.tsx       - カスタムログインページ
 app/api/auth/[...nextauth]/route.ts - NextAuth ハンドラー
-data/clips.json          - 同期されたクリップメタデータ（.gitignore 対象）
-data/photos/             - 同期された画像ファイル（.gitignore 対象）
+prisma/schema.prisma     - DB スキーマ定義
+data/photos/             - 画像ファイル（{userId}/{YYYYMMDD}/、.gitignore 対象）
 ```
 
 ### REST API 仕様
@@ -57,7 +64,7 @@ data/photos/             - 同期された画像ファイル（.gitignore 対象
 - **EP3 画像ダウンロード**: `GET /api/v1/photos/{id}` → 画像バイナリ
 - **データ同期**: `POST /api/v1/sync` → localStorage データをサーバーに保存
 - **データフロー**: ブラウザで「サーバーに同期」ボタン → POST /api/v1/sync → data/ に保存 → GET API で取得可能に
-- **ストレージ**: JSON ファイル + 画像ファイル（Phase 8 で PostgreSQL に移行予定）
+- **ストレージ**: PostgreSQL + 画像ファイル（`data/photos/{userId}/{YYYYMMDD}/`）
 
 ### 技術的な注意点
 - **SSR 無効化**: NoteGrid, NoteModal は `next/dynamic` + `ssr: false` で読み込み（Canvas / @dnd-kit がブラウザ専用）
@@ -80,7 +87,5 @@ data/photos/             - 同期された画像ファイル（.gitignore 対象
 - [x] REST API: PixDraft 連携（クリップ一覧/詳細/画像DL/同期、Bearer 認証）
 - [x] ファイルドロップ: 画像ファイルをブラウザにドラッグ&ドロップでメモ作成
 - [x] Phase 7: Google OAuth 認証（NextAuth v5 + JWT セッション）
-- [ ] Phase 8: PostgreSQL + Prisma（API ストレージを JSON → DB に移行）
-- [ ] Phase 9: API 拡張（署名付き URL、サムネイルリサイズ、Webhook）
-- [ ] Phase 10: データ移行（localStorage → DB）
+- [x] Phase 8-10: PostgreSQL + Prisma 移行、画像API、フロントAPI切り替え、画像ディレクトリ構造改善
 - [ ] Phase 11: 本番デプロイ最終調整

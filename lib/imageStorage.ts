@@ -75,9 +75,23 @@ function mimeToExt(mimeType: string): string {
 
 /**
  * 保存ディレクトリの存在を保証する
+ *
+ * @param subDir - PHOTOS_DIR からの相対サブディレクトリ（省略時はルート）
  */
-async function ensurePhotosDir(): Promise<void> {
-  await fs.mkdir(PHOTOS_DIR, { recursive: true });
+async function ensurePhotosDir(subDir?: string): Promise<void> {
+  const dir = subDir ? path.join(PHOTOS_DIR, subDir) : PHOTOS_DIR;
+  await fs.mkdir(dir, { recursive: true });
+}
+
+/**
+ * 現在の日付を YYYYMMDD 形式で取得する
+ */
+function todayDateStr(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}`;
 }
 
 // ============================================================
@@ -88,10 +102,11 @@ async function ensurePhotosDir(): Promise<void> {
  * アップロードされた画像ファイルを検証してディスクに保存する
  *
  * @param file - multipart/form-data から取得した File オブジェクト
+ * @param userId - 保存先サブディレクトリに使うユーザー ID
  * @returns 保存結果のメタデータ
  * @throws Error - MIME タイプ不正、ファイルサイズ超過時
  */
-export async function saveImageFile(file: File): Promise<SavedImageInfo> {
+export async function saveImageFile(file: File, userId: string): Promise<SavedImageInfo> {
   // MIME タイプ検証
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
     throw new Error(
@@ -106,11 +121,13 @@ export async function saveImageFile(file: File): Promise<SavedImageInfo> {
     );
   }
 
-  await ensurePhotosDir();
+  const dateStr = todayDateStr();
+  const subDir = path.join(userId, dateStr);
+  await ensurePhotosDir(subDir);
 
   const id = createId();
   const ext = mimeToExt(file.type);
-  const filename = `${id}.${ext}`;
+  const filename = path.join(subDir, `${id}.${ext}`);
   const filePath = path.join(PHOTOS_DIR, filename);
 
   // File → ArrayBuffer → Buffer → ディスク書き込み
@@ -133,14 +150,18 @@ export async function saveImageFile(file: File): Promise<SavedImageInfo> {
  * 既存の syncData() と同様のロジック。
  *
  * @param dataUrl - base64 エンコードされた DataURL 文字列
+ * @param userId - 保存先サブディレクトリに使うユーザー ID
  * @param mimeTypeHint - MIME タイプのヒント（DataURL から取得できない場合のフォールバック）
  * @returns 保存結果のメタデータ
  */
 export async function saveImageFromDataUrl(
   dataUrl: string,
+  userId: string,
   mimeTypeHint?: string
 ): Promise<SavedImageInfo> {
-  await ensurePhotosDir();
+  const dateStr = todayDateStr();
+  const subDir = path.join(userId, dateStr);
+  await ensurePhotosDir(subDir);
 
   // DataURL を分割: "data:image/png;base64,iVBOR..."
   const commaIndex = dataUrl.indexOf(",");
@@ -155,7 +176,7 @@ export async function saveImageFromDataUrl(
 
   const id = createId();
   const ext = mimeToExt(mimeType);
-  const filename = `${id}.${ext}`;
+  const filename = path.join(subDir, `${id}.${ext}`);
   const filePath = path.join(PHOTOS_DIR, filename);
 
   await fs.writeFile(filePath, buffer);
