@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-03-15: 画像 JPEG 変換 + LoginNudge 容量表示改善
+
+### 概要
+画像保存形式を PNG から JPEG (quality 0.85) に変更し、localStorage 容量を大幅に節約。LoginNudge バナーの容量表示を改善。
+
+### 変更ファイル
+- `lib/imageUtils.ts` — `canvas.toDataURL("image/png")` → `canvas.toDataURL("image/jpeg", 0.85)` に変更。mimeType も `image/jpeg` に
+- `components/LoginNudge.tsx` — 容量表示を「X / 5 MB」→「X MB 使用中 ※ブラウザにより保存容量の上限は異なります」に変更
+
+### 効果
+- 同じ 1600px リサイズでも画像サイズが PNG の 1/3〜1/5 に削減
+- ブラウザごとに異なる localStorage 上限を不正確に固定表示していた問題を解消
+
 ## 2026-03-14: 画像ストレージ ディレクトリ構造改善
 
 ### 概要

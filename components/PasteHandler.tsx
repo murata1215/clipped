@@ -61,7 +61,7 @@ export default function PasteHandler({
         onNotePasted(note);
       } else {
         // ローカルモード: リサイズして base64 でメモに埋め込み
-        const localImage = await resizeToDataUrl(blob, 800);
+        const localImage = await resizeToDataUrl(blob, 1600);
         const note = await onCreateNote({ images: [localImage] });
         recordFirstPaste();
         onNotePasted(note);

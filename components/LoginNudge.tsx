@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import {
   FIRST_PASTE_KEY,
@@ -33,6 +33,26 @@ export default function LoginNudge({ onShowToast, noteCount }: LoginNudgeProps) 
   const { data: session } = useSession();
   /** バナー表示の可否 */
   const [showBanner, setShowBanner] = useState(false);
+
+  /**
+   * localStorage の使用量を計算する（MB 単位）
+   * noteCount が変わるたびに再計算される
+   */
+  const storageMB = useMemo(() => {
+    try {
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) {
+          total += key.length + (localStorage.getItem(key)?.length ?? 0);
+        }
+      }
+      // JavaScript 文字列は UTF-16（2バイト/文字）
+      return ((total * 2) / 1024 / 1024).toFixed(1);
+    } catch {
+      return "?";
+    }
+  }, [noteCount]);
 
   /**
    * メモ件数に応じてバナーの表示/非表示をリアルタイムに切り替える。
@@ -101,6 +121,7 @@ export default function LoginNudge({ onShowToast, noteCount }: LoginNudgeProps) 
       <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
         <p className="text-sm text-blue-600">
           💡 ログインするとどの端末からでも使えます
+          <span className="ml-2 text-blue-400">（ローカル保存: {storageMB} MB 使用中 ※ブラウザにより保存容量の上限は異なります）</span>
         </p>
         <button
           className="text-blue-400 hover:text-blue-600 p-1"

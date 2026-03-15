@@ -214,7 +214,7 @@ export default function NoteModal({
             setImages((prev) => [...prev, newImage]);
           } else {
             // ローカルモード: リサイズして base64
-            const localImage = await resizeToDataUrl(blob, 800);
+            const localImage = await resizeToDataUrl(blob, 1600);
             setImages((prev) => [...prev, localImage]);
           }
         } catch (err) {

@@ -19,12 +19,12 @@ import type { LocalImage } from "./localStorage";
  * 4. canvas に描画して base64 DataURL に変換
  *
  * @param blob - クリップボードから取得した画像 Blob
- * @param maxSize - リサイズ後の最大辺サイズ（px）。デフォルト 800
+ * @param maxSize - リサイズ後の最大辺サイズ（px）。デフォルト 1600
  * @returns LocalImage オブジェクト（id, dataUrl, mimeType, width, height）
  */
 export async function resizeToDataUrl(
   blob: Blob,
-  maxSize: number = 800
+  maxSize: number = 1600
 ): Promise<LocalImage> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -65,13 +65,13 @@ export async function resizeToDataUrl(
         }
         ctx.drawImage(img, 0, 0, width, height);
 
-        /** PNG 形式で base64 DataURL を取得 */
-        const dataUrl = canvas.toDataURL("image/png");
+        /** JPEG 形式で base64 DataURL を取得（PNG より大幅に軽量） */
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
 
         resolve({
           id: createId(),
           dataUrl,
-          mimeType: "image/png",
+          mimeType: "image/jpeg",
           width,
           height,
         });
