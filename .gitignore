@@ -41,7 +41,11 @@ next-env.d.ts
 # API データストア（サーバー同期データ、リポジトリに含めない）
 /data/
 
+# バックアップ（日次自動生成、リポジトリに含めない）
+/backups/
+
 # devrelay
 .devrelay/
 .devrelay-output/
+.devrelay-output-history/
 .devrelay-files/

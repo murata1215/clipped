@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * NewNoteInput コンポーネントのプロパティ
@@ -8,6 +9,8 @@ import { useState, useRef, useEffect } from "react";
 type NewNoteInputProps = {
   /** メモ作成時のコールバック（タイトルと本文を渡す） */
   onCreate: (data: { title: string; body: string }) => void;
+  /** ペーストボタン押下時のコールバック（クリップボードからメモ作成） */
+  onPaste?: () => void;
 };
 
 /**
@@ -22,7 +25,8 @@ type NewNoteInputProps = {
  *    - タイトルまたは本文に入力がある → メモを作成して折り畳み
  *    - 両方空 → 何もせず折り畳み
  */
-export default function NewNoteInput({ onCreate }: NewNoteInputProps) {
+export default function NewNoteInput({ onCreate, onPaste }: NewNoteInputProps) {
+  const { t } = useI18n();
   /** 展開状態の管理 */
   const [isExpanded, setIsExpanded] = useState(false);
   /** タイトル入力値 */
@@ -77,7 +81,7 @@ export default function NewNoteInput({ onCreate }: NewNoteInputProps) {
             {/* タイトル入力欄 */}
             <input
               type="text"
-              placeholder="タイトル"
+              placeholder={t("newNote.titlePlaceholder")}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full text-sm font-medium text-gray-900 placeholder-gray-400
@@ -86,7 +90,7 @@ export default function NewNoteInput({ onCreate }: NewNoteInputProps) {
             {/* 本文入力欄（複数行） */}
             <textarea
               ref={bodyRef}
-              placeholder="メモを入力..."
+              placeholder={t("newNote.placeholder")}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={3}
@@ -109,17 +113,32 @@ export default function NewNoteInput({ onCreate }: NewNoteInputProps) {
                   setIsExpanded(false);
                 }}
               >
-                閉じる
+                {t("newNote.close")}
               </button>
             </div>
           </div>
         ) : (
-          /* 折り畳み状態: クリックで展開するプレースホルダー */
-          <div
-            className="px-4 py-3 cursor-text"
-            onClick={() => setIsExpanded(true)}
-          >
-            <span className="text-sm text-gray-400">メモを入力...</span>
+          /* 折り畳み状態: クリックで展開するプレースホルダー + ペーストボタン */
+          <div className="flex items-center">
+            <div
+              className="flex-1 px-4 py-3 cursor-text"
+              onClick={() => setIsExpanded(true)}
+            >
+              <span className="text-sm text-gray-400">{t("newNote.placeholder")}</span>
+            </div>
+            {onPaste && (
+              <button
+                className="px-3 py-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50
+                           transition-colors rounded-r-lg"
+                onClick={onPaste}
+                title={t("newNote.pasteButton")}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </button>
+            )}
           </div>
         )}
       </div>

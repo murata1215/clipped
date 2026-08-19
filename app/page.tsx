@@ -6,7 +6,7 @@ import Header from "@/components/Header";
 import NewNoteInput from "@/components/NewNoteInput";
 import PasteHandler from "@/components/PasteHandler";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import SyncButton from "@/components/SyncButton";
+import { resizeToDataUrl } from "@/lib/imageUtils";
 
 /**
  * NoteGrid: @dnd-kit/core がブラウザ専用 DOM API に依存するため、
@@ -23,6 +23,7 @@ import LoginNudge from "@/components/LoginNudge";
 import Toast, { type ToastMessage } from "@/components/Toast";
 import { useNoteService } from "@/lib/noteService";
 import type { LocalNote } from "@/lib/localStorage";
+import { useI18n } from "@/lib/i18n";
 import { createId } from "@paralleldrive/cuid2";
 
 /**
@@ -46,6 +47,7 @@ export default function HomePage() {
   // データサービス（localStorage / API 自動切り替え）
   // ================================================================
   const svc = useNoteService();
+  const { t } = useI18n();
 
   // ================================================================
   // ステート管理
@@ -126,6 +128,39 @@ export default function HomePage() {
   );
 
   /**
+   * ペーストボタンハンドラ
+   * navigator.clipboard.read() でクリップボードを読み取り、
+   * 画像またはテキストからメモを作成する。
+   */
+  const handlePasteButton = useCallback(async () => {
+    try {
+      if (navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find((t) => t.startsWith("image/"));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            if (svc.isServerMode && svc.uploadImage) {
+              const note = await svc.createNote({});
+              await svc.uploadImage(note.id, blob);
+            } else {
+              const localImage = await resizeToDataUrl(blob, 1600);
+              await svc.createNote({ images: [localImage] });
+            }
+            return;
+          }
+        }
+      }
+      const text = await navigator.clipboard.readText();
+      if (text?.trim()) {
+        await svc.createNote({ body: text.trim() });
+      }
+    } catch (err) {
+      console.error("クリップボードの読み取りに失敗:", err);
+    }
+  }, [svc.createNote, svc.uploadImage, svc.isServerMode]);
+
+  /**
    * カードクリックハンドラ
    * NoteCard がクリックされた時に呼ばれ、モーダルを開く
    */
@@ -167,11 +202,15 @@ export default function HomePage() {
 
   /**
    * モーダルを閉じるハンドラ
-   * 一覧を再読み込みして最新状態を反映
+   * 変更があった場合のみ一覧を再読み込みして最新状態を反映する。
+   * 変更なしの場合は reloadNotes をスキップしてレイアウト再計算による
+   * カード位置の微妙な変動を防止する。
    */
-  const handleModalClose = useCallback(() => {
+  const handleModalClose = useCallback((dirty?: boolean) => {
     setEditingNote(null);
-    reloadNotes();
+    if (dirty) {
+      reloadNotes();
+    }
   }, [reloadNotes]);
 
   /**
@@ -209,13 +248,13 @@ export default function HomePage() {
         <LoginNudge onShowToast={showToast} noteCount={svc.notes.length} />
 
         {/* 新規メモ作成エリア */}
-        <NewNoteInput onCreate={handleCreate} />
+        <NewNoteInput onCreate={handleCreate} onPaste={handlePasteButton} />
 
         {/* メモ一覧グリッド */}
         <main className="max-w-7xl mx-auto">
           {svc.loading ? (
             <div className="flex justify-center py-12">
-              <div className="text-gray-400 text-sm">読み込み中...</div>
+              <div className="text-gray-400 text-sm">{t("grid.loading")}</div>
             </div>
           ) : (
             <NoteGrid
@@ -240,9 +279,6 @@ export default function HomePage() {
             isServerMode={svc.isServerMode}
           />
         )}
-
-        {/* サーバー同期ボタン（未ログイン時のみ表示） */}
-        {!svc.isServerMode && <SyncButton onShowToast={showToast} />}
 
         {/* トースト通知 */}
         <Toast toasts={toasts} onDismiss={dismissToast} />

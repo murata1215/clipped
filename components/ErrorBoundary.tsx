@@ -115,11 +115,11 @@ export default class ErrorBoundary extends React.Component<
 
             {/* エラーメッセージ */}
             <h2 className="text-lg font-semibold text-gray-800 mb-2">
-              予期しないエラーが発生しました
+              Something went wrong
             </h2>
             <p className="text-sm text-gray-500 mb-6">
-              アプリケーションで問題が発生しました。
-              ページを再読み込みするか、もう一度お試しください。
+              An unexpected error occurred.
+              Please reload the page or try again.
             </p>
 
             {/* デバッグ用エラー詳細（開発者向け） */}
@@ -136,14 +136,14 @@ export default class ErrorBoundary extends React.Component<
                            hover:bg-gray-300 transition-colors"
                 onClick={this.handleRetry}
               >
-                再試行
+                Retry
               </button>
               <button
                 className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg
                            hover:bg-blue-600 transition-colors"
                 onClick={this.handleReload}
               >
-                ページを再読み込み
+                Reload page
               </button>
             </div>
           </div>

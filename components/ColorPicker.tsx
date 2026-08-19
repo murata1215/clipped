@@ -1,4 +1,14 @@
+/**
+ * ColorPicker コンポーネント
+ *
+ * メモの背景色を6色から選択するカラーピッカー。
+ * NoteModal のフッター部分に配置される。
+ * 選択中のカラーにはチェックマークとリングを表示。
+ */
 "use client";
+
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKeys } from "@/locales";
 
 /**
  * ColorPicker コンポーネントのプロパティ
@@ -13,27 +23,22 @@ type ColorPickerProps = {
 /**
  * メモカードの背景色定義
  * value: localStorage / DB に保存する値
- * label: ツールチップに表示する日本語名
+ * labelKey: 翻訳キー
  * bg: プレビュー用の Tailwind 背景色クラス
  * ring: 選択時のリング色
  */
-const COLORS = [
-  { value: "default", label: "デフォルト", bg: "bg-white", ring: "ring-gray-400" },
-  { value: "yellow", label: "黄色", bg: "bg-note-yellow", ring: "ring-yellow-500" },
-  { value: "green", label: "緑", bg: "bg-note-green", ring: "ring-green-500" },
-  { value: "blue", label: "青", bg: "bg-note-blue", ring: "ring-blue-500" },
-  { value: "pink", label: "ピンク", bg: "bg-note-pink", ring: "ring-pink-500" },
-  { value: "purple", label: "紫", bg: "bg-note-purple", ring: "ring-purple-500" },
+const COLORS: { value: string; labelKey: TranslationKeys; bg: string; ring: string }[] = [
+  { value: "default", labelKey: "color.default", bg: "bg-white", ring: "ring-gray-400" },
+  { value: "yellow", labelKey: "color.yellow", bg: "bg-note-yellow", ring: "ring-yellow-500" },
+  { value: "green", labelKey: "color.green", bg: "bg-note-green", ring: "ring-green-500" },
+  { value: "blue", labelKey: "color.blue", bg: "bg-note-blue", ring: "ring-blue-500" },
+  { value: "pink", labelKey: "color.pink", bg: "bg-note-pink", ring: "ring-pink-500" },
+  { value: "purple", labelKey: "color.purple", bg: "bg-note-purple", ring: "ring-purple-500" },
 ];
 
-/**
- * ColorPicker コンポーネント
- *
- * メモの背景色を6色から選択するカラーピッカー。
- * NoteModal のフッター部分に配置される。
- * 選択中のカラーにはチェックマークとリングを表示。
- */
 export default function ColorPicker({ value, onChange }: ColorPickerProps) {
+  const { t } = useI18n();
+
   return (
     <div className="flex items-center gap-2">
       {COLORS.map((color) => {
@@ -43,7 +48,7 @@ export default function ColorPicker({ value, onChange }: ColorPickerProps) {
         return (
           <button
             key={color.value}
-            title={color.label}
+            title={t(color.labelKey)}
             className={`w-7 h-7 rounded-full border border-gray-300
                         flex items-center justify-center
                         transition-all ${color.bg}

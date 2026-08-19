@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKeys } from "@/locales";
 
 // ============================================================
 // 型定義
@@ -36,6 +38,18 @@ type ImageAnnotationProps = {
   onSwitchMode?: (mode: "crop" | "annotate" | "memo", annotatedDataUrl?: string) => void;
   /** 現在のモード（タブのアクティブ表示用） */
   currentMode?: "crop" | "annotate";
+  /** メモのタイトル（サイドパネル用） */
+  memoTitle?: string;
+  /** メモの本文（サイドパネル用） */
+  memoBody?: string;
+  /** メモのタグ（サイドパネル用） */
+  memoTags?: string[];
+  /** タイトル変更コールバック */
+  onMemoTitleChange?: (title: string) => void;
+  /** 本文変更コールバック */
+  onMemoBodyChange?: (body: string) => void;
+  /** タグ変更コールバック */
+  onMemoTagsChange?: (tags: string[]) => void;
 };
 
 /**
@@ -81,13 +95,13 @@ type MarkerPrefs = {
 // ============================================================
 
 /** ペンの色選択肢 */
-const PEN_COLORS = [
-  { value: "#FF0000", label: "赤" },
-  { value: "#FFFF00", label: "黄" },
-  { value: "#00FF00", label: "緑" },
-  { value: "#0088FF", label: "青" },
-  { value: "#000000", label: "黒" },
-  { value: "#FFFFFF", label: "白" },
+const PEN_COLORS: { value: string; labelKey: TranslationKeys }[] = [
+  { value: "#FF0000", labelKey: "annotation.colorRed" },
+  { value: "#FFFF00", labelKey: "annotation.colorYellow" },
+  { value: "#00FF00", labelKey: "annotation.colorGreen" },
+  { value: "#0088FF", labelKey: "annotation.colorBlue" },
+  { value: "#000000", labelKey: "annotation.colorBlack" },
+  { value: "#FFFFFF", labelKey: "annotation.colorWhite" },
 ];
 
 /** ペンの太さの最小値（px） */
@@ -461,7 +475,19 @@ export default function ImageAnnotation({
   onCancel,
   onSwitchMode,
   currentMode,
+  memoTitle,
+  memoBody,
+  memoTags,
+  onMemoTitleChange,
+  onMemoBodyChange,
+  onMemoTagsChange,
 }: ImageAnnotationProps) {
+  const { t } = useI18n();
+  /** メモサイドパネルの表示状態 */
+  const [showMemoPanel, setShowMemoPanel] = useState(true);
+  /** メモパネルが利用可能か（props が渡されている場合） */
+  const hasMemoPanel = onMemoTitleChange !== undefined;
+
   // ================================================================
   // ステート管理
   // ================================================================
@@ -566,6 +592,29 @@ export default function ImageAnnotation({
     };
     img.src = imageSrc;
   }, [imageSrc]);
+
+  /**
+   * メモパネルの開閉時に Canvas スケールを再計算する
+   * コンテナ幅が変わるため、次フレームで再計算する
+   */
+  useEffect(() => {
+    if (!imageLoaded) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    // パネルのアニメーション後に再計算
+    const timer = setTimeout(() => {
+      const maxW = container.clientWidth - 32;
+      const maxH = container.clientHeight - 32;
+      if (maxW <= 0 || maxH <= 0) return;
+      const newScale = Math.max(
+        Math.min(maxW / imageWidth, maxH / imageHeight),
+        0.01
+      );
+      setScale(newScale);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [showMemoPanel, imageLoaded, imageWidth, imageHeight]);
 
   /**
    * Canvas に画像とストロークを描画する
@@ -892,6 +941,49 @@ export default function ImageAnnotation({
     }
   }, []);
 
+  /**
+   * Canvas の内容を新しいウィンドウで印刷する
+   *
+   * canvas.toDataURL() で PNG DataURL を取得し、
+   * 新しいウィンドウに画像のみを配置して window.print() を呼ぶ。
+   * @media print CSS で1ページにフィットさせる。
+   */
+  const handlePrint = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const dataUrl = canvas.toDataURL("image/png");
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<title>Clipped - Print</title>
+<style>
+  @page { margin: 10mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100vw;
+    height: 100vh;
+  }
+  img {
+    max-width: 100%;
+    max-height: 100vh;
+    object-fit: contain;
+  }
+</style>
+</head>
+<body>
+<img src="${dataUrl}" onload="window.print(); window.close();" />
+</body>
+</html>`);
+    printWindow.document.close();
+  }, []);
+
   // ================================================================
   // キーボードショートカット
   // ================================================================
@@ -949,7 +1041,7 @@ export default function ImageAnnotation({
               }`}
               onClick={() => handleTabSwitch("annotate")}
             >
-              マーカー
+              {t("annotation.tabMarker")}
             </button>
             <button
               className={`px-3 py-1.5 text-sm rounded transition-colors ${
@@ -959,18 +1051,27 @@ export default function ImageAnnotation({
               }`}
               onClick={() => handleTabSwitch("crop")}
             >
-              切り抜き
+              {t("annotation.tabCrop")}
             </button>
             <button
-              className="px-3 py-1.5 text-sm rounded transition-colors
-                         text-gray-400 hover:text-white hover:bg-white/10"
-              onClick={() => handleTabSwitch("memo")}
+              className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                showMemoPanel
+                  ? "bg-white/20 text-white font-medium"
+                  : "text-gray-400 hover:text-white hover:bg-white/10"
+              }`}
+              onClick={() => {
+                if (hasMemoPanel) {
+                  setShowMemoPanel((prev) => !prev);
+                } else {
+                  handleTabSwitch("memo");
+                }
+              }}
             >
-              メモ
+              {t("annotation.tabMemo")}
             </button>
           </div>
         ) : (
-          <h3 className="text-white text-sm font-medium">マーカーを描画</h3>
+          <h3 className="text-white text-sm font-medium">{t("annotation.title")}</h3>
         )}
         {/* 右上: 「戻る」ボタン（保存して閉じる） */}
         <div className="flex gap-2">
@@ -979,20 +1080,24 @@ export default function ImageAnnotation({
                        rounded transition-colors"
             onClick={handleBack}
           >
-            戻る
+            {t("annotation.back")}
           </button>
         </div>
       </div>
 
+      {/* メインコンテンツ: ツールバー+Canvas（左）+ メモパネル（右、トグル） */}
+      <div className="flex flex-1 overflow-hidden">
+      {/* 左側: ツールバー + Canvas */}
+      <div className="flex-1 flex flex-col overflow-hidden">
       {/* ツールバー: ツール選択 + 色 + 太さスライダー + 透明度スライダー + Undo + コピー + クリア */}
       <div className="flex items-center gap-3 px-4 py-2 bg-black/30 flex-wrap">
         {/* ツール選択ボタン（ペン / 矢印 / 丸） */}
         <div className="flex items-center gap-1">
-          <span className="text-gray-400 text-xs mr-1">ツール:</span>
+          <span className="text-gray-400 text-xs mr-1">{t("annotation.tools")}</span>
 
           {/* ペンツール */}
           <button
-            title="ペン（フリーハンド）"
+            title={t("annotation.pen")}
             className={`w-8 h-8 flex items-center justify-center rounded transition-all
               ${toolType === "pen"
                 ? "bg-white/20 border-2 border-white"
@@ -1009,7 +1114,7 @@ export default function ImageAnnotation({
 
           {/* 矢印ツール */}
           <button
-            title="矢印"
+            title={t("annotation.arrow")}
             className={`w-8 h-8 flex items-center justify-center rounded transition-all
               ${toolType === "arrow"
                 ? "bg-white/20 border-2 border-white"
@@ -1026,7 +1131,7 @@ export default function ImageAnnotation({
 
           {/* 手書き〇ツール（低周波うねりで自然な歪みのある丸） */}
           <button
-            title="〇（手書き）"
+            title={t("annotation.circleHand")}
             className={`w-8 h-8 flex items-center justify-center rounded transition-all
               ${toolType === "circle"
                 ? "bg-white/20 border-2 border-white"
@@ -1042,7 +1147,7 @@ export default function ImageAnnotation({
 
           {/* 正確な〇ツール（幾何学的に正確な楕円） */}
           <button
-            title="〇（正確）"
+            title={t("annotation.circleExact")}
             className={`w-8 h-8 flex items-center justify-center rounded transition-all
               ${toolType === "ellipse"
                 ? "bg-white/20 border-2 border-white"
@@ -1059,11 +1164,11 @@ export default function ImageAnnotation({
 
         {/* ペン色選択 */}
         <div className="flex items-center gap-1">
-          <span className="text-gray-400 text-xs mr-1">色:</span>
+          <span className="text-gray-400 text-xs mr-1">{t("annotation.color")}</span>
           {PEN_COLORS.map((c) => (
             <button
               key={c.value}
-              title={c.label}
+              title={t(c.labelKey)}
               className={`w-6 h-6 rounded-full border-2 transition-all
                 ${
                   penColor === c.value
@@ -1078,7 +1183,7 @@ export default function ImageAnnotation({
 
         {/* ペン太さスライダー（2〜40px） */}
         <div className="flex items-center gap-1.5">
-          <span className="text-gray-400 text-xs">太さ:</span>
+          <span className="text-gray-400 text-xs">{t("annotation.width")}</span>
           <input
             type="range"
             min={PEN_WIDTH_MIN}
@@ -1087,7 +1192,7 @@ export default function ImageAnnotation({
             value={penWidth}
             onChange={(e) => setPenWidth(Number(e.target.value))}
             className="w-20 h-1.5 accent-white cursor-pointer"
-            title={`太さ: ${penWidth}px`}
+            title={t("annotation.widthValue", { value: penWidth })}
           />
           {/* 太さプレビュー: 現在の太さに応じた円を表示 */}
           <div className="flex items-center justify-center w-8">
@@ -1106,7 +1211,7 @@ export default function ImageAnnotation({
 
         {/* 透明度スライダー（10%〜100%） */}
         <div className="flex items-center gap-1.5">
-          <span className="text-gray-400 text-xs">透明度:</span>
+          <span className="text-gray-400 text-xs">{t("annotation.opacity")}</span>
           <input
             type="range"
             min={10}
@@ -1115,7 +1220,7 @@ export default function ImageAnnotation({
             value={Math.round(penOpacity * 100)}
             onChange={(e) => setPenOpacity(Number(e.target.value) / 100)}
             className="w-16 h-1.5 accent-white cursor-pointer"
-            title={`透明度: ${Math.round(penOpacity * 100)}%`}
+            title={t("annotation.opacityValue", { value: Math.round(penOpacity * 100) })}
           />
           <span className="text-gray-500 text-[10px] w-8">
             {Math.round(penOpacity * 100)}%
@@ -1128,9 +1233,9 @@ export default function ImageAnnotation({
                      hover:bg-gray-600 transition-colors disabled:opacity-30"
           onClick={handleUndo}
           disabled={strokes.length === 0}
-          title="元に戻す（Ctrl+Z）"
+          title={t("annotation.undo")}
         >
-          ↩ 戻す
+          {t("annotation.undoBtn")}
         </button>
 
         {/* クリップボードにコピーボタン（Ctrl+C でも操作可能） */}
@@ -1141,9 +1246,19 @@ export default function ImageAnnotation({
               : "bg-gray-700 text-gray-300 hover:bg-gray-600"
           }`}
           onClick={handleCopyToClipboard}
-          title="クリップボードにコピー（Ctrl+C）"
+          title={t("annotation.copyTitle")}
         >
-          {copyFeedback ? "✓ コピー済" : "コピー"}
+          {copyFeedback ? t("annotation.copied") : t("annotation.copy")}
+        </button>
+
+        {/* 印刷ボタン */}
+        <button
+          className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded
+                     hover:bg-gray-600 transition-colors"
+          onClick={handlePrint}
+          title={t("annotation.printTitle")}
+        >
+          🖨 {t("annotation.print")}
         </button>
 
         {/* 全クリアボタン */}
@@ -1152,9 +1267,9 @@ export default function ImageAnnotation({
                      hover:bg-gray-600 transition-colors disabled:opacity-30"
           onClick={handleClear}
           disabled={strokes.length === 0}
-          title="全てクリア"
+          title={t("annotation.clearAll")}
         >
-          全消し
+          {t("annotation.clearBtn")}
         </button>
       </div>
 
@@ -1189,9 +1304,55 @@ export default function ImageAnnotation({
 
         {/* 画像読み込み中の表示 */}
         {!imageLoaded && (
-          <p className="text-gray-400 text-sm">画像を読み込み中...</p>
+          <p className="text-gray-400 text-sm">{t("annotation.loadingImage")}</p>
         )}
       </div>
+      </div>{/* /左側 flex-col */}
+
+      {/* 右側: メモサイドパネル（トグル表示） */}
+      {showMemoPanel && hasMemoPanel && (
+        <div className="w-80 flex flex-col bg-gray-900 border-l border-gray-700 overflow-y-auto">
+          <div className="p-4 flex flex-col gap-3 flex-1">
+            {/* タイトル入力 */}
+            <input
+              type="text"
+              value={memoTitle ?? ""}
+              onChange={(e) => onMemoTitleChange?.(e.target.value)}
+              placeholder={t("newNote.titlePlaceholder")}
+              className="w-full bg-gray-800 text-white text-sm font-medium
+                         placeholder-gray-500 rounded px-3 py-2 outline-none
+                         focus:ring-1 focus:ring-gray-500"
+            />
+            {/* 本文入力 */}
+            <textarea
+              value={memoBody ?? ""}
+              onChange={(e) => onMemoBodyChange?.(e.target.value)}
+              placeholder={t("newNote.placeholder")}
+              className="flex-1 w-full bg-gray-800 text-white text-sm
+                         placeholder-gray-500 rounded px-3 py-2 outline-none
+                         resize-none focus:ring-1 focus:ring-gray-500
+                         min-h-[200px]"
+            />
+            {/* タグ入力（シンプルなカンマ区切り） */}
+            <input
+              type="text"
+              value={(memoTags ?? []).join(", ")}
+              onChange={(e) => {
+                const tags = e.target.value
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter((t) => t.length > 0);
+                onMemoTagsChange?.(tags);
+              }}
+              placeholder={t("tag.placeholder")}
+              className="w-full bg-gray-800 text-white text-xs
+                         placeholder-gray-500 rounded px-3 py-2 outline-none
+                         focus:ring-1 focus:ring-gray-500"
+            />
+          </div>
+        </div>
+      )}
+      </div>{/* /メインコンテンツ flex-row */}
     </div>
   );
 }

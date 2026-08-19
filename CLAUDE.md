@@ -14,6 +14,7 @@ See `rules/devrelay.md` for DevRelay rules.
 - **ID生成**: @paralleldrive/cuid2
 - **認証**: NextAuth.js v5 + Google OAuth（JWT セッション）
 - **データ保存**: PostgreSQL + Prisma（ログインユーザー） / localStorage（未ログイン）
+- **i18n**: 自前軽量実装（React Context）、7言語対応（en/ja/zh/ko/es/fr/de）、英語デフォルト
 - **パッケージ管理**: pnpm（NVM 経由で利用）
 - **プロセス管理**: pm2
 
@@ -26,16 +27,19 @@ See `rules/devrelay.md` for DevRelay rules.
 
 ### ファイル構成
 ```
-app/page.tsx             - メインページ（全コンポーネント統合 + SyncButton）
-app/api/v1/clips/route.ts       - EP1: クリップ一覧 API
-app/api/v1/clips/[clipId]/route.ts - EP2: クリップ詳細 API
-app/api/v1/photos/[photoId]/route.ts - EP3: 画像ダウンロード API
-app/api/v1/sync/route.ts        - データ同期 API（localStorage → サーバー）
+app/page.tsx             - メインページ（全コンポーネント統合）
+app/api/v1/clips/route.ts       - EP1: クリップ一覧 API（Prisma ベース、全ユーザー横断）
+app/api/v1/clips/[clipId]/route.ts - EP2: クリップ詳細 API（Prisma ベース）
+app/api/v1/photos/[photoId]/route.ts - EP3: 画像ダウンロード API（Prisma ベース）
+app/api/v1/sync/route.ts        - データ同期 API（localStorage → サーバー、serverStorage 使用）
+app/api/settings/api-key/route.ts - ログインユーザー向け CLIPPED_API_KEY 取得 API
+middleware.ts            - Server Action スキャン攻撃ブロック（next-action ヘッダー付きリクエストを404）
+scripts/backup.sh        - PostgreSQL + 画像の日次バックアップ（7日保持、cron 想定）
 components/NoteGrid.tsx  - @dnd-kit + useMasonry で DnD 対応 Masonry グリッド
 components/NoteCard.tsx  - forwardRef、style prop、dragListeners 対応
 components/NoteModal.tsx - 自動保存（debounce 1500ms）、画像クリックで直接編集（タブ切り替え対応）
 components/PasteHandler.tsx - window レベル paste + dragover/drop イベントリスナー（画像ファイルドロップ対応）
-components/SyncButton.tsx - サーバー同期ボタン（右下フローティング）
+components/LanguageSwitcher.tsx - 言語切り替えドロップダウン（7言語）
 components/ImageCropModal.tsx - Canvas 矩形選択（react-easy-crop 廃止済み、タブ切り替え対応）
 components/ImageAnnotation.tsx - Canvas マーカー描画（ペン/矢印/丸ツール、半透明、設定永続化、Ctrl+C/Z、フィット拡大表示）
 hooks/useMasonry.ts      - JS 計算 Masonry エンジン（absolute positioning）
@@ -55,6 +59,10 @@ app/login/page.tsx       - カスタムログインページ
 app/api/auth/[...nextauth]/route.ts - NextAuth ハンドラー
 prisma/schema.prisma     - DB スキーマ定義
 data/photos/             - 画像ファイル（{userId}/{YYYYMMDD}/、.gitignore 対象）
+locales/                 - 翻訳辞書（en/ja/zh/ko/es/fr/de）+ legal/（privacy, terms）
+lib/i18n.tsx             - I18nProvider + useI18n フック（React Context）
+app/privacy/page.tsx     - プライバシーポリシーページ
+app/terms/page.tsx       - 利用規約ページ
 ```
 
 ### REST API 仕様
@@ -63,8 +71,9 @@ data/photos/             - 画像ファイル（{userId}/{YYYYMMDD}/、.gitignor
 - **EP2 クリップ詳細**: `GET /api/v1/clips/{id}` → JSON（画像 URL 付き）
 - **EP3 画像ダウンロード**: `GET /api/v1/photos/{id}` → 画像バイナリ
 - **データ同期**: `POST /api/v1/sync` → localStorage データをサーバーに保存
-- **データフロー**: ブラウザで「サーバーに同期」ボタン → POST /api/v1/sync → data/ に保存 → GET API で取得可能に
 - **ストレージ**: PostgreSQL + 画像ファイル（`data/photos/{userId}/{YYYYMMDD}/`）
+- **注意**: `NEXT_PUBLIC_CLIPPED_API_KEY` は廃止済み（SyncButton 削除）。外部 API 認証は `CLIPPED_API_KEY` のみ（サーバーサイド専用）
+- **v1 クリップ API**: EP1/EP2/EP3 は Prisma 直接クエリに移行済み（`lib/serverStorage.ts` は EP4 同期 API のみで使用）。EP1/EP2 は全ログインユーザーのメモを横断対象（API キーはユーザー非依存のグローバル鍵）
 
 ### 技術的な注意点
 - **SSR 無効化**: NoteGrid, NoteModal は `next/dynamic` + `ssr: false` で読み込み（Canvas / @dnd-kit がブラウザ専用）
@@ -88,4 +97,7 @@ data/photos/             - 画像ファイル（{userId}/{YYYYMMDD}/、.gitignor
 - [x] ファイルドロップ: 画像ファイルをブラウザにドラッグ&ドロップでメモ作成
 - [x] Phase 7: Google OAuth 認証（NextAuth v5 + JWT セッション）
 - [x] Phase 8-10: PostgreSQL + Prisma 移行、画像API、フロントAPI切り替え、画像ディレクトリ構造改善
+- [x] 多言語対応: i18n（7言語）、LanguageSwitcher、Privacy Policy、Terms of Service
+- [x] セキュリティ: SyncButton 廃止、NEXT_PUBLIC_CLIPPED_API_KEY 削除、API キー再生成、Server Action スキャン攻撃ブロック
+- [x] v1 API を serverStorage → Prisma に移行（EP1/EP2/EP3）、OGP/Twitter カード自動生成、日次バックアップ運用整備
 - [ ] Phase 11: 本番デプロイ最終調整

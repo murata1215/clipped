@@ -14,6 +14,7 @@ import {
 } from "@dnd-kit/core";
 import { LocalNote } from "@/lib/localStorage";
 import { useMasonry, type CardPosition } from "@/hooks/useMasonry";
+import { useI18n } from "@/lib/i18n";
 import NoteCard from "./NoteCard";
 import DragOverlayCard from "./DragOverlayCard";
 
@@ -126,11 +127,13 @@ function DraggableCard({
  * NoteGrid コンポーネント
  *
  * メモカードを Masonry 風グリッドで表示し、ドラッグ&ドロップで並べ替え可能にする。
+ * ピン留めメモと通常メモをセクション分離して表示する。
  *
  * Google Keep と同じアプローチ:
  * - JS でカード高さを測定し、absolute positioning で配置（Masonry）
  * - @dnd-kit でドラッグ&ドロップ
  * - PointerSensor の distance:8 でクリックとドラッグを自動判別
+ * - ピン留めメモは上部セクションに固定、セクションヘッダー + 区切り線で区別
  *
  * レスポンシブ対応:
  * - モバイル: 1列
@@ -145,6 +148,7 @@ export default function NoteGrid({
   onDelete,
   onReorder,
 }: NoteGridProps) {
+  const { t } = useI18n();
   /** Masonry コンテナの DOM 参照 */
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -161,9 +165,32 @@ export default function NoteGrid({
     return map;
   }, [notes]);
 
+  /** ピン留めメモと通常メモを分離 */
+  const pinnedNotes = useMemo(() => notes.filter((n) => n.pinned), [notes]);
+  const unpinnedNotes = useMemo(() => notes.filter((n) => !n.pinned), [notes]);
+  const hasPinned = pinnedNotes.length > 0;
+  const hasUnpinned = unpinnedNotes.length > 0;
+
   /** Masonry レイアウトエンジン */
   const { positions, totalHeight, columnWidth, measured, measureRef, remeasure } =
     useMasonry(itemIds, containerRef);
+
+  /**
+   * ピン留めセクションの高さを計算する
+   * positions の中からピン留めメモの最大 y+height を算出
+   */
+  const pinnedSectionHeight = useMemo(() => {
+    if (!hasPinned || !measured) return 0;
+    const pinnedIds = new Set(pinnedNotes.map((n) => n.id));
+    let maxBottom = 0;
+    for (const pos of positions) {
+      if (pinnedIds.has(pos.id)) {
+        const bottom = pos.y + pos.height;
+        if (bottom > maxBottom) maxBottom = bottom;
+      }
+    }
+    return maxBottom;
+  }, [hasPinned, measured, pinnedNotes, positions]);
 
   // ================================================================
   // @dnd-kit センサー設定
@@ -305,9 +332,9 @@ export default function NoteGrid({
             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
           />
         </svg>
-        <p className="text-lg font-medium">メモがありません</p>
+        <p className="text-lg font-medium">{t("grid.empty")}</p>
         <p className="text-sm mt-1">
-          Ctrl+V で画像やテキストを貼り付けるか、上の入力欄からメモを作成できます
+          {t("grid.emptyHint")}
         </p>
       </div>
     );
@@ -322,6 +349,18 @@ export default function NoteGrid({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
+      {/* ピン留めセクションヘッダー */}
+      {hasPinned && (
+        <div className="px-4 pt-4 pb-1">
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 font-medium uppercase tracking-wider">
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M17 4v7l2 3v2h-6v5l-1 3-1-3v-5H5v-2l2-3V4c0-1.1.9-2 2-2h6c1.1 0 2 .9 2 2z" />
+            </svg>
+            {t("grid.pinnedSection")}
+          </div>
+        </div>
+      )}
+
       {/* Masonry コンテナ: relative + 計算済みの総高さ */}
       <div
         ref={containerRef}
@@ -333,6 +372,20 @@ export default function NoteGrid({
           minHeight: measured ? undefined : 200,
         }}
       >
+        {/* ピン留めセクションと通常セクションの区切り線 */}
+        {hasPinned && hasUnpinned && measured && pinnedSectionHeight > 0 && (
+          <div
+            className="absolute left-4 right-4 border-t border-gray-200"
+            style={{
+              top: pinnedSectionHeight + 8,
+            }}
+          >
+            <span className="absolute -top-2.5 left-0 bg-[var(--background)] px-2 text-[11px] text-gray-400 font-medium uppercase tracking-wider">
+              {t("grid.othersSection")}
+            </span>
+          </div>
+        )}
+
         {positions.map((pos) => {
           const note = notesMap.get(pos.id);
           if (!note) return null;
@@ -357,11 +410,6 @@ export default function NoteGrid({
           未測定カードの測定用レンダリング:
           - 初回（measured=false）: 全カードを不可視で配置して高さを測定
           - 以降（measured=true）: positions に含まれていない新規カードのみ測定対象
-
-          ペーストで新メモが追加された場合、positions には新メモのエントリがないため
-          ここで測定用の不可視カードがレンダリングされ、measureRef 経由で
-          elementMapRef に DOM 要素が登録される。useMasonry 側で itemIds.length の
-          変化を検知して 50ms 後に computeLayout が再実行され、新メモが表示される。
         */}
         {(() => {
           /** positions に含まれている ID のセット（高速検索用） */

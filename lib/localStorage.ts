@@ -167,8 +167,8 @@ function sortNotes(notes: LocalNote[]): LocalNote[] {
   return [...notes].sort((a, b) => {
     // ピン留めメモを先頭に
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    // 同じピン状態なら order の昇順（小さいほど先頭）
-    return (a.order ?? 0) - (b.order ?? 0);
+    // 同じピン状態なら更新日時の降順（新しいものが先頭）
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
   });
 }
 

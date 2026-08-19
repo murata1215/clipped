@@ -4,6 +4,7 @@ import React from "react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { LocalNote } from "@/lib/localStorage";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * NoteCard コンポーネントのプロパティ
@@ -75,6 +76,7 @@ const NoteCard = React.forwardRef<HTMLDivElement, NoteCardProps>(
     },
     ref
   ) => {
+    const { t } = useI18n();
     /** カードの背景色クラスを取得（未定義の場合はデフォルト白） */
     const bgColor = colorMap[note.color] || colorMap.default;
 
@@ -95,7 +97,7 @@ const NoteCard = React.forwardRef<HTMLDivElement, NoteCardProps>(
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={note.images[0].dataUrl}
-              alt="添付画像"
+              alt={t("card.imageAlt")}
               className="w-full h-auto object-cover max-h-48"
               onLoad={onImageLoad}
             />
@@ -106,14 +108,16 @@ const NoteCard = React.forwardRef<HTMLDivElement, NoteCardProps>(
         <div className="p-3">
           {/* タイトル：空でなければ表示 */}
           {note.title && (
-            <h3 className="text-sm font-medium text-gray-900 mb-1 line-clamp-2">
+            <h3 className="text-xl font-medium text-gray-900 mb-1 line-clamp-2">
               {note.title}
             </h3>
           )}
 
-          {/* 本文プレビュー：3行で切り捨て */}
+          {/* 本文プレビュー：画像なしテキストメモは20行、画像ありは8行 */}
           {note.body && (
-            <p className="text-xs text-gray-600 line-clamp-3 whitespace-pre-wrap">
+            <p className={`text-base text-gray-600 whitespace-pre-wrap ${
+              note.images.length > 0 ? "line-clamp-[8]" : "line-clamp-[20]"
+            }`}>
               {note.body}
             </p>
           )}
@@ -124,7 +128,7 @@ const NoteCard = React.forwardRef<HTMLDivElement, NoteCardProps>(
               {note.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500
+                  className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500
                              rounded-full"
                 >
                   {tag}
@@ -141,7 +145,7 @@ const NoteCard = React.forwardRef<HTMLDivElement, NoteCardProps>(
         >
           {/* ピン留めトグルボタン */}
           <button
-            title={note.pinned ? "ピン留め解除" : "ピン留め"}
+            title={note.pinned ? t("card.unpin") : t("card.pin")}
             className="p-1.5 rounded-full hover:bg-black/5 text-gray-400 hover:text-gray-600"
             onClick={(e) => {
               // カード全体のクリックイベントが発火しないようにする
@@ -167,7 +171,7 @@ const NoteCard = React.forwardRef<HTMLDivElement, NoteCardProps>(
 
           {/* 削除ボタン */}
           <button
-            title="削除"
+            title={t("card.delete")}
             className="p-1.5 rounded-full hover:bg-black/5 text-gray-400 hover:text-red-500"
             onClick={(e) => {
               e.stopPropagation();

@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * ログインページ
  *
@@ -7,13 +5,17 @@
  * NextAuth の pages.signIn で指定されたパス（/login）に対応する。
  * ログイン済みの場合はトップページにリダイレクトする。
  */
+"use client";
+
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useI18n } from "@/lib/i18n";
 
 export default function LoginPage() {
   const { status } = useSession();
   const router = useRouter();
+  const { t } = useI18n();
 
   /**
    * ログイン済みの場合はトップページにリダイレクト
@@ -28,7 +30,7 @@ export default function LoginPage() {
   if (status === "loading" || status === "authenticated") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-400">読み込み中...</p>
+        <p className="text-gray-400">{t("login.loading")}</p>
       </div>
     );
   }
@@ -38,19 +40,22 @@ export default function LoginPage() {
       <div className="max-w-sm w-full mx-4">
         {/* ロゴセクション */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            📋 Clipped
-          </h1>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="Clipped" className="w-9 h-9" />
+            <h1 className="text-3xl font-bold text-gray-800">
+              {t("login.title")}
+            </h1>
+          </div>
           <p className="text-gray-500 text-sm">
-            貼るだけメモ — どの端末からでもアクセス
+            {t("login.tagline")}
           </p>
         </div>
 
         {/* ログインカード */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <p className="text-sm text-gray-600 mb-4 text-center">
-            ログインするとメモがクラウドに保存され、
-            どの端末からでもアクセスできます。
+            {t("login.description")}
           </p>
 
           {/* Google ログインボタン */}
@@ -80,12 +85,12 @@ export default function LoginPage() {
                 fill="#EA4335"
               />
             </svg>
-            Google でログイン
+            {t("login.googleBtn")}
           </button>
 
           {/* 注記 */}
           <p className="text-xs text-gray-400 mt-4 text-center">
-            ログインしなくてもメモは使えます（ブラウザに保存されます）
+            {t("login.note")}
           </p>
         </div>
 
@@ -95,8 +100,15 @@ export default function LoginPage() {
             onClick={() => router.push("/")}
             className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
           >
-            ログインせずに使う →
+            {t("login.skipLink")}
           </button>
+        </div>
+
+        {/* フッターリンク */}
+        <div className="text-center mt-8 text-xs text-gray-400 space-x-3">
+          <a href="/privacy" className="hover:text-gray-600 transition-colors">{t("footer.privacy")}</a>
+          <span>|</span>
+          <a href="/terms" className="hover:text-gray-600 transition-colors">{t("footer.terms")}</a>
         </div>
       </div>
     </div>

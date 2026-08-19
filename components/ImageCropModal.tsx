@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getCroppedImage, type CropArea } from "@/lib/cropUtils";
+import { useI18n } from "@/lib/i18n";
 
 // ============================================================
 // 型定義
@@ -88,6 +89,8 @@ export default function ImageCropModal({
   onSwitchMode,
   currentMode,
 }: ImageCropModalProps) {
+  const { t } = useI18n();
+
   // ================================================================
   // Refs
   // ================================================================
@@ -699,7 +702,7 @@ export default function ImageCropModal({
                 }`}
                 onClick={() => onSwitchMode("annotate")}
               >
-                マーカー
+                {t("annotation.tabMarker")}
               </button>
               <button
                 className={`px-3 py-1.5 text-sm rounded transition-colors ${
@@ -709,23 +712,23 @@ export default function ImageCropModal({
                 }`}
                 onClick={() => onSwitchMode("crop")}
               >
-                切り抜き
+                {t("annotation.tabCrop")}
               </button>
               <button
                 className="px-3 py-1.5 text-sm rounded transition-colors
                            text-gray-400 hover:text-white hover:bg-white/10"
                 onClick={() => onSwitchMode("memo")}
               >
-                メモ
+                {t("annotation.tabMemo")}
               </button>
             </div>
-            <span className="text-gray-400 text-xs">ドラッグで範囲を選択</span>
+            <span className="text-gray-400 text-xs">{t("crop.hint")}</span>
           </div>
         ) : (
           <h3 className="text-white text-sm font-medium">
-            画像を切り抜き
+            {t("crop.title")}
             <span className="text-gray-400 text-xs ml-2">
-              ドラッグで範囲を選択
+              {t("crop.hint")}
             </span>
           </h3>
         )}
@@ -735,7 +738,7 @@ export default function ImageCropModal({
                        rounded transition-colors"
             onClick={() => onCancel()}
           >
-            戻る
+            {t("crop.back")}
           </button>
           <button
             className="px-4 py-1.5 text-sm bg-blue-500 text-white
@@ -744,7 +747,7 @@ export default function ImageCropModal({
             onClick={handleConfirm}
             disabled={isProcessing || !selection}
           >
-            {isProcessing ? "処理中..." : "切り抜き"}
+            {isProcessing ? t("crop.processing") : t("crop.cropBtn")}
           </button>
         </div>
       </div>
@@ -769,7 +772,7 @@ export default function ImageCropModal({
         {/* 画像読み込み中のインジケーター */}
         {!imageLoaded && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-gray-400 text-sm">画像を読み込み中...</div>
+            <div className="text-gray-400 text-sm">{t("crop.loading")}</div>
           </div>
         )}
       </div>
@@ -778,8 +781,8 @@ export default function ImageCropModal({
       <div className="flex items-center justify-center gap-4 px-4 py-3 bg-black/50">
         <span className="text-gray-400 text-xs">
           {selection
-            ? "選択範囲をドラッグで移動 / 角をドラッグでリサイズ / 範囲外でドラッグし直し"
-            : "画像上をドラッグして切り抜き範囲を選択してください"}
+            ? t("crop.hintActive")
+            : t("crop.hintStart")}
         </span>
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * TagInput コンポーネントのプロパティ
@@ -22,6 +23,7 @@ type TagInputProps = {
  * - 空文字は無視
  */
 export default function TagInput({ tags, onChange }: TagInputProps) {
+  const { t } = useI18n();
   /** 入力中のテキスト */
   const [input, setInput] = useState("");
   /** input 要素の ref（フォーカス制御用） */
@@ -116,7 +118,7 @@ export default function TagInput({ tags, onChange }: TagInputProps) {
       <input
         ref={inputRef}
         type="text"
-        placeholder={tags.length === 0 ? "タグを追加..." : ""}
+        placeholder={tags.length === 0 ? t("tag.placeholder") : ""}
         value={input}
         onChange={handleChange}
         onKeyDown={handleKeyDown}

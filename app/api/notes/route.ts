@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
         images: { orderBy: { order: "asc" } },
         noteTags: { include: { tag: true } },
       },
-      orderBy: [{ pinned: "desc" }, { order: "asc" }],
+      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
       skip: (page - 1) * perPage,
       take: perPage,
     }),

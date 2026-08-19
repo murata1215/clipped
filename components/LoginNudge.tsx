@@ -6,6 +6,7 @@ import {
   FIRST_PASTE_KEY,
   NUDGE_DISMISSED_KEY,
 } from "@/lib/localStorage";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * LoginNudge コンポーネントのプロパティ
@@ -29,6 +30,7 @@ type LoginNudgeProps = {
  * 3. 初回ペーストから3日後 → トースト表示
  */
 export default function LoginNudge({ onShowToast, noteCount }: LoginNudgeProps) {
+  const { t } = useI18n();
   /** NextAuth セッション情報（ログイン済みなら誘導不要） */
   const { data: session } = useSession();
   /** バナー表示の可否 */
@@ -93,7 +95,7 @@ export default function LoginNudge({ onShowToast, noteCount }: LoginNudgeProps) 
           localStorage.setItem(toastShownKey, "true");
           // 少し遅延してからトースト表示（ページ読み込み直後は避ける）
           setTimeout(() => {
-            onShowToast("スマホからも見たくないですか？ログインすればどこからでもアクセスできます");
+            onShowToast(t("nudge.toast"));
           }, 3000);
         }
       }
@@ -120,8 +122,8 @@ export default function LoginNudge({ onShowToast, noteCount }: LoginNudgeProps) 
     <div className="bg-blue-50 border-b border-blue-100">
       <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
         <p className="text-sm text-blue-600">
-          💡 ログインするとどの端末からでも使えます
-          <span className="ml-2 text-blue-400">（ローカル保存: {storageMB} MB 使用中 ※ブラウザにより保存容量の上限は異なります）</span>
+          {t("nudge.banner")}
+          <span className="ml-2 text-blue-400">{t("nudge.storage", { value: storageMB })}</span>
         </p>
         <button
           className="text-blue-400 hover:text-blue-600 p-1"

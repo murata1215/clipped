@@ -1,20 +1,12 @@
 /**
- * 画像ダウンロード API エンドポイント
+ * 画像ダウンロード API エンドポイント（Prisma ベース）
  *
  * PixDraft の EP3 に対応:
  *   GET /api/v1/photos/{photo_id}
  *   Authorization: Bearer {token}
  *
  * 指定された画像のバイナリデータを返す。
- * PixDraft サーバーはこの URL から直接 fetch して画像を取得する。
- *
- * レスポンス:
- *   Content-Type: image/png（等、画像の MIME タイプ）
- *   Body: 画像バイナリデータ
- *
- * 将来的な拡張:
- *   - ?w=400 のようなリサイズパラメータ対応（sharp 導入後）
- *   - ?token=xxx の署名付き URL（認証不要のダウンロード）
+ * Prisma で Image レコードを検索し、ディスクからファイルを読み取る。
  */
 
 import { NextRequest } from "next/server";
@@ -25,17 +17,11 @@ import {
   notFoundResponse,
   serverErrorResponse,
 } from "@/lib/apiAuth";
-import { getPhotoFile } from "@/lib/serverStorage";
+import { prisma } from "@/lib/prisma";
+import { getImageFilePath } from "@/lib/imageStorage";
 
 /**
  * GET /api/v1/photos/{photoId} - 画像バイナリダウンロード
- *
- * パスパラメータ:
- *   photoId - 画像の一意識別子
- *
- * レスポンス:
- *   成功時: 画像バイナリ（Content-Type 付き）
- *   失敗時: JSON エラーレスポンス
  */
 export async function GET(
   request: NextRequest,
@@ -49,23 +35,28 @@ export async function GET(
   try {
     const { photoId } = params;
 
-    // 画像ファイルのパスと MIME タイプを取得
-    const result = await getPhotoFile(photoId);
+    // Prisma で Image レコードを検索
+    const image = await prisma.image.findUnique({
+      where: { id: photoId },
+      include: { note: true },
+    });
 
-    if (!result) {
+    if (!image || image.note.deleted) {
       return notFoundResponse("画像", photoId);
     }
 
-    const [filePath, mimeType] = result;
+    // ディスクから画像ファイルを読み込み
+    const filePath = await getImageFilePath(image.filename);
+    if (!filePath) {
+      return notFoundResponse("画像ファイル", photoId);
+    }
 
-    // 画像ファイルを読み込んでバイナリレスポンスを返す
     const fileBuffer = await fs.readFile(filePath);
 
     return new Response(fileBuffer, {
       status: 200,
       headers: {
-        "Content-Type": mimeType,
-        // キャッシュ設定: 画像は同期で更新されるため、短めの maxAge
+        "Content-Type": image.mimeType,
         "Cache-Control": "public, max-age=300",
       },
     });

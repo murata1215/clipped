@@ -4,7 +4,7 @@ Google Keep 風のメモアプリ。「貼り付けファースト」の設計�
 
 ## 特徴
 
-- **貼り付けファースト** - ページがアクティブなら Ctrl+V で即座にメモ作成
+- **貼り付けファースト** - ページがアクティブなら Ctrl+V で即座にメモ作成。ペーストボタンからも作成可能
 - **ファイルドロップ** - 画像ファイルをブラウザにドラッグ&ドロップでメモ作成（複数ファイル同時対応）
 - **画像切り抜き** - Canvas ベースの矩形選択で画像をトリミング
 - **マーカー描画** - 画像上にフリーハンドで半透明マーカーを描画（蛍光ペン風、フィット拡大表示）
@@ -14,10 +14,14 @@ Google Keep 風のメモアプリ。「貼り付けファースト」の設計�
 - **自動保存** - モーダル編集時にデバウンス 1500ms で自動保存
 - **タグ・カラー** - メモにタグ付けと背景色（6色）を設定可能
 - **キーボードショートカット** - Ctrl+Z（アンドゥ）、Ctrl+C（クリップボードコピー）
-- **REST API** - 外部サービス連携用 API（クリップ一覧/詳細/画像DL、Bearer 認証）
-- **サーバー同期** - localStorage データをサーバーに手動同期（API 経由で外部アクセス可能に）
+- **多言語対応** - 7言語（en/ja/zh/ko/es/fr/de）、英語デフォルト、ブラウザ言語自動検出
+- **Google OAuth ログイン** - NextAuth v5 + JWT セッション
 - **PostgreSQL + Prisma** - ログインユーザーはサーバーサイド DB にメモ・画像を保存
 - **デュアルストレージ** - ログイン時は DB、未ログイン時は localStorage を自動切り替え
+- **REST API** - 外部サービス連携用 API（クリップ一覧/詳細/画像DL/同期、Bearer 認証、Prisma ベース）
+- **プライバシーポリシー・利用規約ページ** - `/privacy`, `/terms`（7言語対応）
+- **OGP / Twitter カード自動生成** - シェア時のリンクプレビュー画像をビルド時生成
+- **日次バックアップ** - PostgreSQL + 画像ファイルを cron で自動バックアップ（7日保持）
 
 ## 技術スタック
 
@@ -38,23 +42,29 @@ Google Keep 風のメモアプリ。「貼り付けファースト」の設計�
 ```
 clipped/
 ├── app/
-│   ├── layout.tsx          # ルートレイアウト
+│   ├── layout.tsx          # ルートレイアウト（OGP/Twitter メタデータ含む）
 │   ├── page.tsx            # メインページ（全機能統合）
-│   └── globals.css         # グローバル CSS
-├── app/
+│   ├── globals.css         # グローバル CSS
+│   ├── opengraph-image.tsx # OGP 画像自動生成
+│   ├── twitter-image.tsx   # Twitter Card 画像自動生成
+│   ├── privacy/page.tsx    # プライバシーポリシー
+│   ├── terms/page.tsx      # 利用規約
+│   ├── login/page.tsx      # ログインページ
 │   ├── api/v1/
-│   │   ├── clips/route.ts        # クリップ一覧 API
-│   │   ├── clips/[clipId]/route.ts # クリップ詳細 API
-│   │   ├── photos/[photoId]/route.ts # 画像ダウンロード API
-│   │   └── sync/route.ts         # データ同期 API
+│   │   ├── clips/route.ts        # クリップ一覧 API（Prisma ベース）
+│   │   ├── clips/[clipId]/route.ts # クリップ詳細 API（Prisma ベース）
+│   │   ├── photos/[photoId]/route.ts # 画像ダウンロード API（Prisma ベース）
+│   │   └── sync/route.ts         # データ同期 API（serverStorage ベース）
+│   ├── api/notes/           # 内部 API（NextAuth セッション認証）
+│   └── api/settings/api-key/route.ts # ログインユーザー向け API キー取得
 ├── components/
-│   ├── Header.tsx          # ヘッダー（検索バー + ログインボタン）
-│   ├── NewNoteInput.tsx    # 新規メモ作成エリア
+│   ├── Header.tsx          # ヘッダー（検索バー + 言語切替 + ログインボタン）
+│   ├── NewNoteInput.tsx    # 新規メモ作成エリア（ペーストボタン含む）
 │   ├── NoteGrid.tsx        # Masonry グリッド + DnD
 │   ├── NoteCard.tsx        # 個別メモカード
 │   ├── NoteModal.tsx       # メモ編集モーダル（自動保存）
 │   ├── PasteHandler.tsx    # グローバルペースト + ファイルドロップ処理
-│   ├── SyncButton.tsx      # サーバー同期ボタン
+│   ├── LanguageSwitcher.tsx # 言語切り替えドロップダウン（7言語）
 │   ├── ImageCropModal.tsx  # Canvas 矩形選択による画像切り抜き
 │   ├── ImageAnnotation.tsx # Canvas マーカー描画
 │   ├── ColorPicker.tsx     # 背景色選択（6色）
@@ -68,17 +78,22 @@ clipped/
 ├── lib/
 │   ├── localStorage.ts     # localStorage CRUD
 │   ├── apiAuth.ts          # API キー認証
-│   ├── serverStorage.ts    # サーバーサイドストレージ
+│   ├── serverStorage.ts    # サーバーサイドストレージ（EP4 同期専用）
 │   ├── imageUtils.ts       # 画像リサイズユーティリティ
 │   ├── cropUtils.ts        # 画像切り抜きユーティリティ
 │   ├── prisma.ts           # Prisma クライアントシングルトン
 │   ├── noteService.ts      # サーバーサイド CRUD サービス
 │   ├── noteApiClient.ts    # フロントエンド API クライアント
-│   └── imageStorage.ts     # 画像ファイル保存/削除/パス取得
+│   ├── imageStorage.ts     # 画像ファイル保存/削除/パス取得
+│   └── i18n.tsx            # I18nProvider + useI18n フック
+├── locales/                 # 翻訳辞書（en/ja/zh/ko/es/fr/de）+ legal/（privacy, terms）
 ├── prisma/
 │   └── schema.prisma       # DB スキーマ定義
 ├── data/                   # 同期データ（.gitignore 対象）
 │   └── photos/{userId}/{YYYYMMDD}/ # 画像ファイル
+├── scripts/
+│   └── backup.sh           # 日次バックアップ（PostgreSQL + 画像、7日保持）
+├── middleware.ts           # Server Action スキャン攻撃ブロック
 ├── docs/
 │   └── Clipped_仕様書.md   # 仕様書
 └── ecosystem.config.js     # pm2 設定
@@ -152,6 +167,9 @@ Apache reverse proxy 経由で `ribbon-re.jp/clipped` でアクセスされる�
 - [x] ファイルドロップ: 画像ドラッグ&ドロップでメモ作成
 - [x] Phase 7: Google OAuth 認証（NextAuth v5 + JWT セッション）
 - [x] Phase 8-10: PostgreSQL + Prisma 移行、画像API、フロントAPI切り替え
+- [x] 多言語対応: i18n（7言語）、LanguageSwitcher、Privacy Policy、Terms of Service
+- [x] セキュリティ: SyncButton 廃止、NEXT_PUBLIC_CLIPPED_API_KEY 削除、API キー再生成、Server Action スキャン攻撃ブロック
+- [x] v1 API を serverStorage → Prisma に移行（EP1/EP2/EP3）、OGP/Twitter カード自動生成、日次バックアップ運用整備
 - [ ] Phase 11: 本番デプロイ最終調整
 
 ## ドキュメント構成

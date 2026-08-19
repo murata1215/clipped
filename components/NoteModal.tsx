@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { updateNote as updateLocalNote, type LocalNote, type LocalImage, type UpdateNoteInput } from "@/lib/localStorage";
+import { useI18n } from "@/lib/i18n";
 import { resizeToDataUrl } from "@/lib/imageUtils";
 import ColorPicker from "./ColorPicker";
 import TagInput from "./TagInput";
@@ -14,8 +15,8 @@ import ImageAnnotation from "./ImageAnnotation";
 type NoteModalProps = {
   /** 編集対象のメモ */
   note: LocalNote;
-  /** モーダルを閉じる時のコールバック */
-  onClose: () => void;
+  /** モーダルを閉じる時のコールバック（dirty: 変更があったか） */
+  onClose: (dirty?: boolean) => void;
   /** メモ保存関数（useNoteService から渡される、未指定時は localStorage） */
   onSave?: (id: string, input: UpdateNoteInput) => Promise<LocalNote | null>;
   /** 画像アップロード関数（サーバーモード時のみ） */
@@ -71,6 +72,7 @@ export default function NoteModal({
   onReplaceImage,
   isServerMode,
 }: NoteModalProps) {
+  const { t } = useI18n();
   // ================================================================
   // ステート管理
   // ================================================================
@@ -87,6 +89,16 @@ export default function NoteModal({
   const [images, setImages] = useState<LocalImage[]>(note.images);
   /** 自動保存タイマーの ref */
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  /** 初期値スナップショット（差分チェック用、変更なし時の保存スキップ） */
+  const initialValuesRef = useRef({
+    title: note.title,
+    body: note.body,
+    color: note.color,
+    tags: note.tags.join(","),
+    imageIds: note.images.map((i) => i.id).join(","),
+  });
+  /** 変更があったかのフラグ（closeNote 時に reloadNotes を判断） */
+  const dirtyRef = useRef(false);
   /** モーダルコンテナの ref */
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -119,14 +131,14 @@ export default function NoteModal({
           await onSave(id, input);
         } catch (err) {
           console.error("メモの保存に失敗:", err);
-          setSaveError("保存に失敗しました");
+          setSaveError(t("modal.saveFailed"));
           setTimeout(() => setSaveError(null), 5000);
         }
       } else {
         updateLocalNote(id, input);
       }
     },
-    [onSave]
+    [onSave, t]
   );
 
   // ================================================================
@@ -136,7 +148,7 @@ export default function NoteModal({
   useEffect(() => {
     const handleSaveError = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      setSaveError(detail?.message || "保存に失敗しました");
+      setSaveError(detail?.message || t("modal.saveFailed"));
       setTimeout(() => setSaveError(null), 5000);
     };
     window.addEventListener("clipped:save-error", handleSaveError);
@@ -149,15 +161,42 @@ export default function NoteModal({
 
   /**
    * 自動保存を実行する
+   *
+   * 初期値と比較して変更がなければ保存をスキップする。
+   * これにより、メモを開いただけで updatedAt が更新されて
+   * ソート順が変わる問題を防止する。
    * サーバーモード時は画像を含めない（images は API 側で管理される）
    */
   const saveNow = useCallback(() => {
+    // 差分チェック: 初期値と比較して変更がなければスキップ
+    const current = {
+      title,
+      body,
+      color,
+      tags: tags.join(","),
+      imageIds: images.map((i) => i.id).join(","),
+    };
+    const init = initialValuesRef.current;
+    if (
+      current.title === init.title &&
+      current.body === init.body &&
+      current.color === init.color &&
+      current.tags === init.tags &&
+      current.imageIds === init.imageIds
+    ) {
+      return; // 変更なし → 保存スキップ
+    }
+
     if (isServerMode) {
-      // サーバーモード: テキストフィールドのみ保存（画像は API で個別管理）
       saveNote(note.id, { title, body, color, tags });
     } else {
       saveNote(note.id, { title, body, color, tags, images });
     }
+
+    // 保存が実行されたことを記録（閉じる時の reloadNotes 判定用）
+    dirtyRef.current = true;
+    // 保存後に初期値を更新（次回の差分検知用）
+    initialValuesRef.current = current;
   }, [note.id, title, body, color, tags, images, isServerMode, saveNote]);
 
   /**
@@ -242,12 +281,23 @@ export default function NoteModal({
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
-    if (isServerMode) {
-      saveNote(note.id, { title, body, color, tags });
-    } else {
-      saveNote(note.id, { title, body, color, tags, images });
+    // 変更がある場合のみ保存（開いただけで閉じた場合は保存スキップ）
+    const init = initialValuesRef.current;
+    const hasChanges =
+      title !== init.title ||
+      body !== init.body ||
+      color !== init.color ||
+      tags.join(",") !== init.tags ||
+      images.map((i) => i.id).join(",") !== init.imageIds;
+    if (hasChanges) {
+      dirtyRef.current = true;
+      if (isServerMode) {
+        saveNote(note.id, { title, body, color, tags });
+      } else {
+        saveNote(note.id, { title, body, color, tags, images });
+      }
     }
-    onClose();
+    onClose(dirtyRef.current);
   };
 
   /**
@@ -343,13 +393,13 @@ export default function NoteModal({
       }
     }
 
-    // 保存して閉じる
+    // 保存して閉じる（画像編集は常に変更あり）
     if (isServerMode) {
       saveNote(note.id, { title, body, color, tags });
     } else {
       saveNote(note.id, { title, body, color, tags, images: finalImages });
     }
-    onClose();
+    onClose(true);
   }, [note.id, title, body, color, tags, images, editingImageId, onClose, isServerMode, onReplaceImage, saveNote]);
 
   /**
@@ -431,7 +481,7 @@ export default function NoteModal({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={img.dataUrl}
-                    alt="添付画像"
+                    alt={t("card.imageAlt")}
                     className="w-24 h-24 object-cover rounded-lg cursor-pointer
                                hover:ring-2 hover:ring-blue-400 transition-all"
                     onClick={() => handleStartImageEdit(img.id, "annotate")}
@@ -459,7 +509,7 @@ export default function NoteModal({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="タイトル"
+              placeholder={t("modal.titlePlaceholder")}
               className="w-full text-lg font-medium text-gray-900 placeholder-gray-400
                          outline-none bg-transparent mb-3"
             />
@@ -467,7 +517,7 @@ export default function NoteModal({
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="メモを入力..."
+              placeholder={t("modal.bodyPlaceholder")}
               rows={4}
               className="w-full text-sm text-gray-700 placeholder-gray-400
                          outline-none resize-none bg-transparent min-h-[100px]"
@@ -490,7 +540,7 @@ export default function NoteModal({
                          rounded hover:bg-black/5 transition-colors"
               onClick={handleClose}
             >
-              閉じる
+              {t("modal.close")}
             </button>
           </div>
         </div>
@@ -514,6 +564,12 @@ export default function NoteModal({
           onCancel={handleEditCancel}
           onSwitchMode={handleSwitchEditMode}
           currentMode="annotate"
+          memoTitle={title}
+          memoBody={body}
+          memoTags={tags}
+          onMemoTitleChange={setTitle}
+          onMemoBodyChange={setBody}
+          onMemoTagsChange={setTags}
         />
       )}
     </>

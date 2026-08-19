@@ -12,7 +12,7 @@
 
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import type { LocalNote, LocalImage, CreateNoteInput, UpdateNoteInput } from "@/lib/localStorage";
 import {
@@ -22,6 +22,7 @@ import {
   deleteNote as deleteLocalNote,
   searchNotes as searchLocalNotes,
   reorderNotes as reorderLocalNotes,
+  clearNotes as clearLocalNotes,
 } from "@/lib/localStorage";
 import {
   fetchNotes,
@@ -132,6 +133,78 @@ export function useNoteService(): NoteService {
 
   /** 楽観ロック用の version マップ（noteId → version） */
   const versionMapRef = useRef<Map<string, number>>(new Map());
+
+  /** マイグレーション実行済みフラグ（同一セッション内の二重実行防止） */
+  const migrationDoneRef = useRef(false);
+
+  /**
+   * ログイン時に localStorage のメモをサーバーへ自動マイグレーションする
+   *
+   * SyncButton 廃止に伴い、未ログイン時に作成したメモを
+   * ログイン後に自動的にサーバーへ移行する。
+   * 全件成功後に localStorage をクリアし、二重移行を防止する。
+   */
+  useEffect(() => {
+    if (!isServerMode || migrationDoneRef.current) return;
+    migrationDoneRef.current = true;
+
+    const localNotes = getLocalNotes();
+    if (localNotes.length === 0) return;
+
+    (async () => {
+      console.log(`[Migration] localStorage → サーバー: ${localNotes.length} 件のメモを移行開始`);
+      let successCount = 0;
+
+      for (const note of localNotes) {
+        try {
+          // メモ本体を作成
+          const apiNote = await createNoteApi({
+            title: note.title,
+            body: note.body,
+            color: note.color,
+            pinned: note.pinned,
+            tags: note.tags,
+          });
+
+          // base64 画像があればアップロード
+          for (const img of note.images) {
+            if (img.dataUrl && img.dataUrl.startsWith("data:")) {
+              try {
+                const blob = await dataUrlToBlob(img.dataUrl);
+                const file = new File([blob], `${img.id}.jpg`, { type: blob.type || "image/jpeg" });
+                await uploadImageApi(apiNote.id, file);
+              } catch (imgErr) {
+                console.warn(`[Migration] 画像アップロード失敗（続行）: noteId=${apiNote.id}`, imgErr);
+              }
+            }
+          }
+
+          successCount++;
+        } catch (err) {
+          console.error(`[Migration] メモ移行失敗: "${note.title}"`, err);
+        }
+      }
+
+      // 全件成功した場合のみ localStorage をクリア
+      if (successCount === localNotes.length) {
+        clearLocalNotes();
+        console.log(`[Migration] 完了: ${successCount} 件を移行、localStorage をクリア`);
+      } else {
+        console.warn(`[Migration] 部分成功: ${successCount}/${localNotes.length} 件。localStorage は保持`);
+      }
+
+      // サーバーから最新一覧を再取得
+      try {
+        const apiNotes = await fetchNotes();
+        for (const n of apiNotes) {
+          versionMapRef.current.set(n.id, n.version);
+        }
+        setNotes(apiNotes.map(apiNoteToLocal));
+      } catch {
+        // リロードは後続の reloadNotes で行われるため無視
+      }
+    })();
+  }, [isServerMode]);
 
   /**
    * version マップを API レスポンスから更新する

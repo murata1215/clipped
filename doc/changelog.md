@@ -1,5 +1,90 @@
 # Changelog
 
+## 2026-08-19: v1 API の Prisma 移行 + セキュリティ強化 + 運用整備（過去セッション分の記録漏れをまとめて反映）
+
+### 概要
+これまで未コミットのまま作業ディレクトリに溜まっていた変更（2026-03〜06 頃に実施済み）をまとめてコミット。
+外部連携 API（EP1/EP2/EP3）の Prisma 移行、Server Action スキャン攻撃対策、OGP/Twitter カード自動生成、
+API キー参照用の設定 API、日次バックアップ運用、ペーストボタン UI などを含む。
+
+### v1 API を serverStorage → Prisma に移行
+- `app/api/v1/clips/route.ts`（EP1 一覧）/ `[clipId]/route.ts`（EP2 詳細）/ `app/api/v1/photos/[photoId]/route.ts`（EP3 画像DL）を
+  JSON ファイルベースの `lib/serverStorage.ts` から Prisma 直接クエリに変更
+- EP1/EP2 は全ログインユーザーのメモを横断対象として検索・返却（API キーはユーザー非依存のグローバル鍵という設計）
+- `app/api/v1/sync/route.ts`（データ同期）は引き続き `lib/serverStorage.ts` を使用（今回は対象外）
+- ベース URL 環境変数を `CLIPPED_PUBLIC_URL` → `NEXT_PUBLIC_BASE_URL` に変更
+
+### セキュリティ強化
+- `middleware.ts` を新規追加。Server Action を使用しないアプリのため、`next-action` ヘッダー付きリクエストを全て 404 でブロック（スキャン攻撃対策）
+
+### 設定 API 追加
+- `app/api/settings/api-key/route.ts` — ログインユーザーが `CLIPPED_API_KEY` を取得できる API（PixDraft 等の外部連携設定 UI 用、NextAuth セッション認証必須）
+
+### OGP / Twitter カード自動生成
+- `app/opengraph-image.tsx` — Next.js 規約ベースファイルで 1200x630 の OGP 画像をビルド時自動生成（ロゴ + タイトル + サブタイトル）
+- `app/twitter-image.tsx` — `opengraph-image.tsx` を再利用した Twitter Card 画像
+- `app/layout.tsx` の `metadata` に `openGraph` / `twitter` / `icons` / `metadataBase` を追加
+- `app/favicon.ico`、`public/logo.png`、`public/apple-touch-icon.png` を更新・追加
+- `pic/` — ロゴ元画像（`clipped-logo-120.png`, `clipped-logo-16.png`）
+
+### 運用整備: 日次バックアップ
+- `scripts/backup.sh` 新規追加 — PostgreSQL ダンプ + 画像ファイルを日次バックアップ、7日以上前のバックアップは自動削除（cron 想定: `0 3 * * *`）
+- `.gitignore` に `/backups/` を追加
+
+### UI 改善
+- `app/page.tsx` — クリップボードボタンからのペースト機能（`handlePasteButton`）を追加。`navigator.clipboard.read()` で画像/テキストを判定しメモを作成
+- `app/page.tsx` — モーダルを閉じる際、変更があった場合（`dirty`）のみ `reloadNotes()` を実行し、無駄な再レイアウトを防止
+- `app/api/notes/route.ts` — メモ一覧の並び順を `order asc` → `updatedAt desc` に変更（ピン留め優先は維持）
+
+### 削除・整理
+- `.gitignore` に `.devrelay-output-history/` を追加（DevRelay セッションレポートはリポジトリに含めない）
+
+---
+
+## 2026-03-15: 多言語対応 + 法的ページ + セキュリティ改善
+
+### 概要
+Google OAuth 本番審査に向け、多言語対応（7言語）、プライバシーポリシー・利用規約ページを追加。SyncButton を廃止し API キーのフロントエンド露出を解消。
+
+### i18n（多言語対応）
+- **対応言語**: en（デフォルト）/ ja / zh / ko / es / fr / de
+- **実装**: React Context ベースの軽量 i18n（`lib/i18n.tsx`）、外部ライブラリ不使用
+- **翻訳辞書**: `locales/` ディレクトリに言語別ファイル（~95翻訳キー）
+- **言語切り替え**: `LanguageSwitcher` コンポーネント（Header に統合）
+- **永続化**: localStorage `"clipped:lang"` + ブラウザ言語自動検出
+- **全コンポーネントの UI 文字列を `t()` 関数に置換**
+
+### 法的ページ
+- `/privacy` — プライバシーポリシー（7言語、`locales/legal/privacy.ts`）
+- `/terms` — 利用規約（7言語、`locales/legal/terms.ts`）
+- ログインページにフッターリンク追加
+
+### セキュリティ改善
+- `components/SyncButton.tsx` 削除（フロントエンドから API キー参照を排除）
+- `.env.local` から `NEXT_PUBLIC_CLIPPED_API_KEY` 削除
+- `CLIPPED_API_KEY` を `openssl rand -base64 32` で再生成
+
+### その他
+- Header ロゴを PNG 画像に変更（`public/logo.png`）
+- ファビコンを `logo.png` に変更
+- `<html lang>` をデフォルト `en` に変更（I18nProvider が動的に更新）
+
+### 新規ファイル
+- `lib/i18n.tsx` — I18nProvider + useI18n フック
+- `locales/index.ts` — Locale 型、辞書マップ
+- `locales/{en,ja,zh,ko,es,fr,de}.ts` — 翻訳辞書
+- `locales/legal/privacy.ts` — プライバシーポリシーコンテンツ
+- `locales/legal/terms.ts` — 利用規約コンテンツ
+- `components/LanguageSwitcher.tsx` — 言語切り替え UI
+- `app/privacy/page.tsx` — プライバシーポリシーページ
+- `app/terms/page.tsx` — 利用規約ページ
+- `public/logo.png` — アプリロゴ
+
+### 削除ファイル
+- `components/SyncButton.tsx`
+
+---
+
 ## 2026-03-15: 画像 JPEG 変換 + LoginNudge 容量表示改善
 
 ### 概要
